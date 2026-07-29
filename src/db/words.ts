@@ -46,6 +46,11 @@ export function observeAllWords() {
   return wordsCollection.query(Q.sortBy('created_at', Q.desc)).observe();
 }
 
+/** One-shot fetch of all words, newest first. */
+export function fetchAllWords(): Promise<Word[]> {
+  return wordsCollection.query(Q.sortBy('created_at', Q.desc)).fetch();
+}
+
 /** Words added in the last `days` days (for "test me on the past X days"). */
 export function wordsFromPastDays(days: number): Promise<Word[]> {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;

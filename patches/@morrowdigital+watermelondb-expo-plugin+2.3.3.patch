@@ -1,0 +1,25 @@
+diff --git a/node_modules/@morrowdigital/watermelondb-expo-plugin/build/withWatermelon.js b/node_modules/@morrowdigital/watermelondb-expo-plugin/build/withWatermelon.js
+index 798eb8b..29b3645 100644
+--- a/node_modules/@morrowdigital/watermelondb-expo-plugin/build/withWatermelon.js
++++ b/node_modules/@morrowdigital/watermelondb-expo-plugin/build/withWatermelon.js
+@@ -76,15 +76,13 @@ function mainApplication(config) {
+             mod.modResults['contents'] = mod.modResults.contents.replace('import android.app.Application', `
+ import android.app.Application
+ import com.nozbe.watermelondb.jsi.WatermelonDBJSIPackage;
+-import com.facebook.react.bridge.JSIModulePackage;        
+ `);
+         }
+-        if (!mod.modResults.contents.includes("override fun getJSIModulePackage(): JSIModulePackage")) {
+-            const newContents2 = mod.modResults.contents.replace('override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED', `
+-        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+-        override fun getJSIModulePackage(): JSIModulePackage {
+-        return WatermelonDBJSIPackage()
+-        }`);
++        // New Architecture (RN 0.76+/Expo 52+) removed getJSIModulePackage(); WatermelonDBJSIPackage
++        // is a plain ReactPackage now, so it's registered via the manual-packages list instead.
++        if (!mod.modResults.contents.includes("add(WatermelonDBJSIPackage())")) {
++            const newContents2 = mod.modResults.contents.replace('.packages.apply {', `.packages.apply {
++          add(WatermelonDBJSIPackage())`);
+             mod.modResults.contents = newContents2;
+         }
+         return mod;
