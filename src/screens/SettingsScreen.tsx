@@ -1,8 +1,21 @@
-import React, { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Image, ImageSourcePropType, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Divider, Switch, Text } from 'react-native-paper';
-import { GraduationCap, Headphones, Minus, Moon, Plus, Target } from 'lucide-react-native';
+import {
+  Brain,
+  ExternalLink,
+  GraduationCap,
+  Globe,
+  Headphones,
+  Info,
+  Minus,
+  Moon,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from 'lucide-react-native';
 import { useDailyGoal, useQuizSynonyms, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { AppColors } from '../theme';
@@ -10,6 +23,79 @@ import { useAppTheme } from '../ThemeContext';
 
 const MIN_GOAL = 1;
 const MAX_GOAL = 50;
+
+const FEATURES = [
+  {
+    Icon: Headphones,
+    title: 'Travel Audio Mode',
+    body: 'Loop vocabulary audio hands-free while commuting.',
+  },
+  {
+    Icon: Brain,
+    title: 'Adaptive Quizzing',
+    body: 'Practice active recall on learned words.',
+  },
+  {
+    Icon: ShieldCheck,
+    title: 'Offline First',
+    body: 'Local storage with total privacy (built on WatermelonDB).',
+  },
+] as const;
+
+const PARTNERS = [
+  { name: 'Jobmanch.ai', url: 'https://jobmanch.ai', logo: require('../../assets/Jobmanch Logo.png') },
+  { name: 'Upquarx.com', url: 'https://upquarx.com', logo: require('../../assets/Upquarx Logo.png') },
+] as const;
+
+async function openLink(url: string) {
+  try {
+    await Linking.openURL(url);
+  } catch (err) {
+    console.error('LINK_OPEN_ERROR', url, err);
+  }
+}
+
+function PartnerCard({
+  name,
+  url,
+  logo,
+  colors,
+  styles,
+}: {
+  name: string;
+  url: string;
+  logo: ImageSourcePropType;
+  colors: AppColors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  return (
+    <Pressable
+      onPress={() => openLink(url)}
+      style={({ pressed }) => [styles.partnerCard, pressed && styles.partnerCardPressed]}
+    >
+      {logoFailed ? (
+        <View style={styles.partnerLogoFallback}>
+          <Globe size={22} color={colors.muted} />
+        </View>
+      ) : (
+        <Image
+          source={logo}
+          style={styles.partnerLogo}
+          resizeMode="contain"
+          onError={() => setLogoFailed(true)}
+        />
+      )}
+      <View style={styles.partnerLinkRow}>
+        <Text variant="bodyMedium" style={styles.partnerLinkText}>
+          {name.toLowerCase()}
+        </Text>
+        <ExternalLink size={13} color={colors.primary} />
+      </View>
+    </Pressable>
+  );
+}
 
 export default function SettingsScreen() {
   const { colors, isDark, setDark } = useAppTheme();
@@ -157,14 +243,55 @@ export default function SettingsScreen() {
 
         <Card style={styles.card}>
           <Card.Content>
+            <View style={styles.goalHeader}>
+              <Info size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                About Vocab Hub
+              </Text>
+            </View>
+            <Text variant="bodyMedium" style={styles.aboutSubtitle}>
+              Designed for ambitious learners and competitive exam aspirants
+              building a high-impact vocabulary.
+            </Text>
+
+            <Divider style={styles.aboutDivider} />
+
+            {FEATURES.map((f) => (
+              <View key={f.title} style={styles.featureRow}>
+                <f.Icon size={18} color={colors.violet} />
+                <View style={styles.featureText}>
+                  <Text variant="bodyLarge" style={styles.featureTitle}>
+                    {f.title}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.hint}>
+                    {f.body}
+                  </Text>
+                </View>
+              </View>
+            ))}
+
+            <Divider style={styles.aboutDivider} />
+
+            <View style={styles.visionRow}>
+              <Sparkles size={16} color={colors.amber} />
+              <Text variant="bodySmall" style={styles.visionText}>
+                We are constantly evolving Vocab Hub with intelligent learning
+                features—stay tuned for upcoming updates!
+              </Text>
+            </View>
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.card}>
+          <Card.Content>
             <Text variant="titleMedium" style={styles.cardTitle}>
-              About
+              Developed &amp; Powered By
             </Text>
-            <Text variant="bodyMedium" style={styles.hint}>
-              Vocab Hub stores everything on your device — no account, no
-              cloud. Word definitions come from the Free Dictionary API, and audio
-              playback uses your phone's built-in text-to-speech.
-            </Text>
+            <View style={styles.partnersRow}>
+              {PARTNERS.map((p) => (
+                <PartnerCard key={p.name} {...p} colors={colors} styles={styles} />
+              ))}
+            </View>
           </Card.Content>
         </Card>
       </ScrollView>
@@ -208,4 +335,28 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   fieldLabel: { color: colors.text },
   quizText: { flex: 1, paddingRight: 12 },
   warning: { color: colors.red, marginTop: 8 },
+  aboutSubtitle: { color: colors.muted, lineHeight: 20, marginTop: 4 },
+  aboutDivider: { backgroundColor: colors.border, marginVertical: 14 },
+  featureRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 14 },
+  featureText: { flex: 1 },
+  featureTitle: { color: colors.text, fontWeight: '600' },
+  visionRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  visionText: { flex: 1, color: colors.muted, fontStyle: 'italic', lineHeight: 18 },
+  partnersRow: { flexDirection: 'row', gap: 12, marginTop: 14 },
+  partnerCard: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  partnerCardPressed: { opacity: 0.7 },
+  partnerLogo: { width: 100, height: 40 },
+  partnerLogoFallback: { width: 100, height: 40, alignItems: 'center', justifyContent: 'center' },
+  partnerLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  partnerLinkText: { color: colors.primary, fontWeight: '600' },
 });
