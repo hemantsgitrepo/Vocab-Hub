@@ -14,5 +14,14 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 3,
+      steps: [
+        addColumns({
+          table: 'words',
+          columns: [{ name: 'word_origin', type: 'string', isOptional: true }],
+        }),
+      ],
+    },
   ],
 });

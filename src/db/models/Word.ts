@@ -17,6 +17,7 @@ interface Word {
   antonym2: string;
   exampleSentence: string;
   laymanExplanation: string | null;
+  wordOrigin: string | null;
   /** Primary grammatical form, e.g. "adjective". */
   partOfSpeech: string;
   /** Other grammatical variants, e.g. "adverb: capriciously". */
@@ -76,6 +77,7 @@ applyDecorators('antonym1', text('antonym_1') as unknown as LegacyDecorator);
 applyDecorators('antonym2', text('antonym_2') as unknown as LegacyDecorator);
 applyDecorators('exampleSentence', text('example_sentence') as unknown as LegacyDecorator);
 applyDecorators('laymanExplanation', text('layman_explanation') as unknown as LegacyDecorator);
+applyDecorators('wordOrigin', text('word_origin') as unknown as LegacyDecorator);
 applyDecorators('partOfSpeech', text('part_of_speech') as unknown as LegacyDecorator);
 applyDecorators('wordForms', text('word_forms') as unknown as LegacyDecorator);
 applyDecorators('difficultyLevel', text('difficulty_level') as unknown as LegacyDecorator);

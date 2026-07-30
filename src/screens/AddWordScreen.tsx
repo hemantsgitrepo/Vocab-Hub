@@ -29,6 +29,7 @@ const EMPTY = {
   ant2: '',
   example: '',
   layman: '',
+  origin: '',
   partOfSpeech: '',
   wordForms: '',
 };
@@ -87,8 +88,8 @@ export default function AddWordScreen() {
   };
 
   const save = async () => {
-    if (!form.word.trim() || !form.meaning.trim() || !form.example.trim()) {
-      setSnack('Word, meaning and example sentence are required.');
+    if (!form.word.trim() || !form.meaning.trim()) {
+      setSnack('Word and meaning are required.');
       return;
     }
     setSaving(true);
@@ -106,6 +107,7 @@ export default function AddWordScreen() {
         antonyms: [form.ant1, form.ant2],
         exampleSentence: form.example,
         laymanExplanation: form.layman || undefined,
+        wordOrigin: form.origin || undefined,
         partOfSpeech: form.partOfSpeech,
         wordForms: form.wordForms,
         difficultyLevel: difficulty,
@@ -242,6 +244,14 @@ export default function AddWordScreen() {
             label="Usage in a sentence"
             value={form.example}
             onChangeText={set('example')}
+            multiline
+            style={styles.field}
+          />
+          <TextInput
+            mode="outlined"
+            label="Origin of the word (optional)"
+            value={form.origin}
+            onChangeText={set('origin')}
             multiline
             style={styles.field}
           />

@@ -12,6 +12,7 @@ export interface NewWordInput {
   antonyms: [string, string];
   exampleSentence: string;
   laymanExplanation?: string;
+  wordOrigin?: string;
   partOfSpeech?: string;
   wordForms?: string;
   difficultyLevel?: DifficultyLevel;
@@ -40,6 +41,7 @@ export function createWord(input: NewWordInput): Promise<Word> {
       w.antonym2 = capitalizeFirst(input.antonyms[1]);
       w.exampleSentence = capitalizeFirst(input.exampleSentence);
       w.laymanExplanation = capitalizeFirst(input.laymanExplanation ?? '') || null;
+      w.wordOrigin = capitalizeFirst(input.wordOrigin ?? '') || null;
       // Grammar labels stay lowercase, as dictionaries print them.
       w.partOfSpeech = (input.partOfSpeech ?? '').trim();
       w.wordForms = (input.wordForms ?? '').trim();

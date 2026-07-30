@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'words',
@@ -16,6 +16,7 @@ export const schema = appSchema({
         { name: 'antonym_2', type: 'string' },
         { name: 'example_sentence', type: 'string' },
         { name: 'layman_explanation', type: 'string', isOptional: true },
+        { name: 'word_origin', type: 'string', isOptional: true },
         { name: 'part_of_speech', type: 'string' },
         { name: 'word_forms', type: 'string' },
         { name: 'difficulty_level', type: 'string', isIndexed: true },
