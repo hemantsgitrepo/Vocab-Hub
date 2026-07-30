@@ -9,8 +9,10 @@ import {
   Text,
   TextInput,
 } from 'react-native-paper';
-import { Sparkles } from 'lucide-react-native';
+import { Sparkles, Volume2 } from 'lucide-react-native';
 import { lookupWord } from '../api/dictionary';
+import { speakOnce } from '../lib/tts';
+import { capitalizeFirst } from '../lib/text';
 import { createWord } from '../db/words';
 import { DifficultyLevel } from '../db/models/Word';
 import { colors } from '../theme';
@@ -26,6 +28,8 @@ const EMPTY = {
   ant2: '',
   example: '',
   layman: '',
+  partOfSpeech: '',
+  wordForms: '',
 };
 
 export default function AddWordScreen() {
@@ -52,14 +56,17 @@ export default function AddWordScreen() {
       }
       setForm((f) => ({
         ...f,
+        word: capitalizeFirst(f.word),
         pronunciation: result.pronunciation || f.pronunciation,
         audioUrl: result.audioUrl || f.audioUrl,
-        meaning: result.meaning || f.meaning,
-        example: result.example || f.example,
-        syn1: result.synonyms[0] ?? f.syn1,
-        syn2: result.synonyms[1] ?? f.syn2,
-        ant1: result.antonyms[0] ?? f.ant1,
-        ant2: result.antonyms[1] ?? f.ant2,
+        meaning: capitalizeFirst(result.meaning || f.meaning),
+        example: capitalizeFirst(result.example || f.example),
+        syn1: capitalizeFirst(result.synonyms[0] ?? f.syn1),
+        syn2: capitalizeFirst(result.synonyms[1] ?? f.syn2),
+        ant1: capitalizeFirst(result.antonyms[0] ?? f.ant1),
+        ant2: capitalizeFirst(result.antonyms[1] ?? f.ant2),
+        partOfSpeech: result.partOfSpeech || f.partOfSpeech,
+        wordForms: result.wordForms || f.wordForms,
       }));
       setSnack('Filled from dictionary — review and edit freely.');
     } catch {
@@ -67,6 +74,14 @@ export default function AddWordScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const playPronunciation = () => {
+    if (!form.word.trim()) {
+      setSnack('Type a word first to hear it.');
+      return;
+    }
+    speakOnce(form.word);
   };
 
   const save = async () => {
@@ -85,6 +100,8 @@ export default function AddWordScreen() {
         antonyms: [form.ant1, form.ant2],
         exampleSentence: form.example,
         laymanExplanation: form.layman || undefined,
+        partOfSpeech: form.partOfSpeech,
+        wordForms: form.wordForms,
         difficultyLevel: difficulty,
       });
       setForm(EMPTY);
@@ -143,6 +160,31 @@ export default function AddWordScreen() {
             label="Pronunciation"
             value={form.pronunciation}
             onChangeText={set('pronunciation')}
+            style={styles.field}
+            right={
+              <TextInput.Icon
+                icon={() => <Volume2 size={22} color={colors.primary} />}
+                onPress={playPronunciation}
+                forceTextInputFocus={false}
+                accessibilityLabel="Play pronunciation"
+              />
+            }
+          />
+          <TextInput
+            mode="outlined"
+            label="Grammatical form"
+            placeholder="e.g. adjective, noun"
+            value={form.partOfSpeech}
+            onChangeText={set('partOfSpeech')}
+            style={styles.field}
+          />
+          <TextInput
+            mode="outlined"
+            label="Other word forms"
+            placeholder="e.g. adverb: meticulously"
+            value={form.wordForms}
+            onChangeText={set('wordForms')}
+            multiline
             style={styles.field}
           />
           <TextInput

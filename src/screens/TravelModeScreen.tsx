@@ -12,8 +12,25 @@ import {
   Square,
 } from 'lucide-react-native';
 import Word from '../db/models/Word';
-import { useAllWords } from '../hooks';
+import { useAllWords, useTravelFields } from '../hooks';
+import { TRAVEL_FIELDS, TravelField } from '../db/settings';
+import { initTts } from '../lib/tts';
 import { colors } from '../theme';
+
+/** Builds the spoken segments for one word, in canonical field order. */
+function segmentsFor(w: Word, enabled: TravelField[]): string[] {
+  const text: Record<TravelField, string> = {
+    word: w.word,
+    meaning: w.meaning,
+    synonyms: w.synonyms.length ? `Synonyms: ${w.synonyms.join(', ')}` : '',
+    antonyms: w.antonyms.length ? `Antonyms: ${w.antonyms.join(', ')}` : '',
+    example: w.exampleSentence,
+    layman: w.laymanExplanation ?? '',
+  };
+  return TRAVEL_FIELDS.filter((f) => enabled.includes(f.key))
+    .map((f) => text[f.key])
+    .filter((t) => t.trim().length > 0);
+}
 
 // Android's TTS treats rate 0.5 as normal speed; multiply for 0.8x / 1x / 1.25x.
 const RATES: Record<string, number> = { '0.8': 0.4, '1': 0.5, '1.25': 0.625 };
@@ -21,6 +38,7 @@ const PITCHES: Record<string, number> = { low: 0.8, normal: 1, high: 1.2 };
 
 export default function TravelModeScreen() {
   const words = useAllWords();
+  const [travelFields] = useTravelFields();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -33,6 +51,9 @@ export default function TravelModeScreen() {
   const indexRef = useRef(0);
   const loopRef = useRef(loop);
   loopRef.current = loop;
+  // Read inside the async playback loop, so mid-session edits take effect.
+  const fieldsRef = useRef(travelFields);
+  fieldsRef.current = travelFields;
   const initialised = useRef(false);
 
   // Select everything once words first arrive; after that the user is in charge.
@@ -44,7 +65,7 @@ export default function TravelModeScreen() {
   }, [words]);
 
   useEffect(() => {
-    Tts.getInitStatus().catch(() => {});
+    initTts();
     const done = () => resolveRef.current?.();
     const subs: any[] = [
       Tts.addEventListener('tts-finish', done),
@@ -79,18 +100,15 @@ export default function TravelModeScreen() {
       indexRef.current = i;
       const w = list[i];
       setCurrentId(w.id);
-      // Sequence: word → short pause → meaning → example, like a podcast segment.
-      await speak(w.word);
-      if (token !== playToken.current) return;
-      await wait(700);
-      if (token !== playToken.current) return;
-      await speak(w.meaning);
-      if (token !== playToken.current) return;
-      await wait(400);
-      if (token !== playToken.current) return;
-      if (w.exampleSentence) {
-        await speak(w.exampleSentence);
+      // Only the fields enabled in Settings, with a short pause between each.
+      const segments = segmentsFor(w, fieldsRef.current);
+      for (let s = 0; s < segments.length; s++) {
+        await speak(segments[s]);
         if (token !== playToken.current) return;
+        if (s < segments.length - 1) {
+          await wait(600);
+          if (token !== playToken.current) return;
+        }
       }
       await wait(1200);
       if (token !== playToken.current) return;
@@ -101,6 +119,9 @@ export default function TravelModeScreen() {
       }
     }
     if (token === playToken.current) {
+      // Reached the end — rewind so the next play starts the playlist over
+      // instead of replaying the final word.
+      indexRef.current = 0;
       setIsPlaying(false);
       setCurrentId(null);
     }
@@ -113,7 +134,10 @@ export default function TravelModeScreen() {
     setCurrentId(null);
   };
 
-  const togglePlay = () => (isPlaying ? stop() : playFrom(indexRef.current));
+  const togglePlay = () => {
+    if (!isPlaying && travelFields.length === 0) return;
+    isPlaying ? stop() : playFrom(indexRef.current);
+  };
 
   const skip = () => {
     if (!isPlaying) return;
@@ -194,6 +218,13 @@ export default function TravelModeScreen() {
       )}
 
       <View style={styles.player}>
+        <Text variant="labelMedium" style={styles.fieldSummary}>
+          {travelFields.length === 0
+            ? 'No fields selected — pick some in Settings'
+            : `Playing: ${TRAVEL_FIELDS.filter((f) => travelFields.includes(f.key))
+                .map((f) => f.label.toLowerCase())
+                .join(' · ')}`}
+        </Text>
         <View style={styles.controlLabels}>
           <Text variant="labelMedium" style={styles.controlLabel}>
             Speed
@@ -233,7 +264,11 @@ export default function TravelModeScreen() {
           >
             <Repeat size={22} color={loop ? '#FFFFFF' : colors.primary} />
           </Pressable>
-          <Pressable onPress={togglePlay} style={styles.playBtn}>
+          <Pressable
+            onPress={togglePlay}
+            disabled={travelFields.length === 0}
+            style={[styles.playBtn, travelFields.length === 0 && styles.playBtnDisabled]}
+          >
             {isPlaying ? (
               <Pause size={30} color="#FFFFFF" fill="#FFFFFF" />
             ) : (
@@ -274,6 +309,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     elevation: 8,
   },
+  fieldSummary: { color: colors.muted, textAlign: 'center', marginBottom: 10 },
   controlLabels: { flexDirection: 'row', gap: 8 },
   controlLabel: { flex: 1, color: colors.muted, marginBottom: 4 },
   controlRow: { flexDirection: 'row', gap: 8 },
@@ -303,4 +339,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 4,
   },
+  playBtnDisabled: { backgroundColor: colors.muted },
 });

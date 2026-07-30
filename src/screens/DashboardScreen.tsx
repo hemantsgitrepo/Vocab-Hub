@@ -108,11 +108,9 @@ export default function DashboardScreen() {
                     <Text variant="titleMedium" style={styles.wordText}>
                       {w.word}
                     </Text>
-                    {!!w.pronunciation && (
-                      <Text variant="bodySmall" style={styles.pron}>
-                        {w.pronunciation}
-                      </Text>
-                    )}
+                    <Text variant="bodySmall" style={styles.pron}>
+                      {[w.pronunciation, w.partOfSpeech].filter(Boolean).join('  ·  ')}
+                    </Text>
                   </View>
                   <Chip
                     compact
@@ -128,6 +126,11 @@ export default function DashboardScreen() {
                 <Text variant="bodyMedium" numberOfLines={2} style={styles.meaning}>
                   {w.meaning}
                 </Text>
+                {!!w.wordForms && (
+                  <Text variant="bodySmall" style={styles.forms}>
+                    {w.wordForms}
+                  </Text>
+                )}
               </Card.Content>
             </Card>
           ))
@@ -174,4 +177,5 @@ const styles = StyleSheet.create({
   chip: { height: 28 },
   chipText: { fontSize: 12, lineHeight: 14, color: colors.text },
   meaning: { color: colors.muted, marginTop: 6 },
+  forms: { color: colors.violet, marginTop: 6 },
 });

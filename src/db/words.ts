@@ -1,6 +1,7 @@
 import { Q } from '@nozbe/watermelondb';
 import { database, wordsCollection } from './index';
 import Word, { DifficultyLevel, PracticeStatus } from './models/Word';
+import { capitalizeFirst } from '../lib/text';
 
 export interface NewWordInput {
   word: string;
@@ -11,22 +12,29 @@ export interface NewWordInput {
   antonyms: [string, string];
   exampleSentence: string;
   laymanExplanation?: string;
+  partOfSpeech?: string;
+  wordForms?: string;
   difficultyLevel?: DifficultyLevel;
 }
 
 export function createWord(input: NewWordInput): Promise<Word> {
   return database.write(() =>
     wordsCollection.create((w) => {
-      w.word = input.word.trim();
+      // Capitalized here (not just in the form) so every save path is covered.
+      // Pronunciation is left alone — it's IPA, e.g. /ˌsɛɹənˈdɪpɪti/.
+      w.word = capitalizeFirst(input.word);
       w.pronunciation = input.pronunciation.trim();
       w.audioUrl = input.audioUrl ?? '';
-      w.meaning = input.meaning.trim();
-      w.synonym1 = input.synonyms[0].trim();
-      w.synonym2 = input.synonyms[1].trim();
-      w.antonym1 = input.antonyms[0].trim();
-      w.antonym2 = input.antonyms[1].trim();
-      w.exampleSentence = input.exampleSentence.trim();
-      w.laymanExplanation = input.laymanExplanation?.trim() || null;
+      w.meaning = capitalizeFirst(input.meaning);
+      w.synonym1 = capitalizeFirst(input.synonyms[0]);
+      w.synonym2 = capitalizeFirst(input.synonyms[1]);
+      w.antonym1 = capitalizeFirst(input.antonyms[0]);
+      w.antonym2 = capitalizeFirst(input.antonyms[1]);
+      w.exampleSentence = capitalizeFirst(input.exampleSentence);
+      w.laymanExplanation = capitalizeFirst(input.laymanExplanation ?? '') || null;
+      // Grammar labels stay lowercase, as dictionaries print them.
+      w.partOfSpeech = (input.partOfSpeech ?? '').trim();
+      w.wordForms = (input.wordForms ?? '').trim();
       w.difficultyLevel = input.difficultyLevel ?? 'medium';
       w.practiceStatus = 'new';
     })

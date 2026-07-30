@@ -15,6 +15,7 @@
    - Exactly 2 Synonyms, Exactly 2 Antonyms
    - Contextual Example Sentence
    - Layman's Terms Explanation (Optional string)
+   - Part of Speech, Word Forms (grammatical variants)
    - Created At (timestamp), Difficulty Level, Practice Status
 3. **Audio / Travel Mode:** Continuous back-to-back playback of words + meanings with pause intervals, TTS pitch/speed control, and background audio readiness.
 4. **Testing Engine:** Dynamic quizzes (Flashcards, Multiple Choice, Fill-in-the-Blanks) based on user's learned vocabulary pool.

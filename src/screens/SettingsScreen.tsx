@@ -1,9 +1,10 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card, Text } from 'react-native-paper';
-import { Minus, Plus, Target } from 'lucide-react-native';
-import { useDailyGoal } from '../hooks';
+import { Card, Divider, Switch, Text } from 'react-native-paper';
+import { GraduationCap, Headphones, Minus, Plus, Target } from 'lucide-react-native';
+import { useDailyGoal, useQuizSynonyms, useTravelFields } from '../hooks';
+import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { colors } from '../theme';
 
 const MIN_GOAL = 1;
@@ -11,10 +12,23 @@ const MAX_GOAL = 50;
 
 export default function SettingsScreen() {
   const [goal, setGoal] = useDailyGoal();
+  const [travelFields, setTravelFields] = useTravelFields();
+  // Same stored preference the Quiz setup screen uses; both re-read on focus.
+  const [quizSynonyms, setQuizSynonyms] = useQuizSynonyms();
 
   const bump = (delta: number) => {
     const next = Math.min(MAX_GOAL, Math.max(MIN_GOAL, goal + delta));
     if (next !== goal) setGoal(next);
+  };
+
+  const toggleField = (key: TravelField) => {
+    const next = travelFields.includes(key)
+      ? travelFields.filter((f) => f !== key)
+      : // Rebuilt from TRAVEL_FIELDS so playback order stays canonical.
+        TRAVEL_FIELDS.map((f) => f.key).filter(
+          (k) => k === key || travelFields.includes(k)
+        );
+    setTravelFields(next);
   };
 
   return (
@@ -56,6 +70,62 @@ export default function SettingsScreen() {
             <Text variant="labelMedium" style={styles.goalUnit}>
               words per day
             </Text>
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
+              <Headphones size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Travel mode audio
+              </Text>
+            </View>
+            <Text variant="bodyMedium" style={styles.hint}>
+              Choose what gets read aloud for each word during a session.
+            </Text>
+            {TRAVEL_FIELDS.map((field, i) => (
+              <View key={field.key}>
+                {i > 0 && <Divider />}
+                <View style={styles.fieldRow}>
+                  <Text variant="bodyLarge" style={styles.fieldLabel}>
+                    {field.label}
+                  </Text>
+                  <Switch
+                    value={travelFields.includes(field.key)}
+                    onValueChange={() => toggleField(field.key)}
+                  />
+                </View>
+              </View>
+            ))}
+            {travelFields.length === 0 && (
+              <Text variant="bodySmall" style={styles.warning}>
+                Nothing selected — Travel mode has nothing to play.
+              </Text>
+            )}
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
+              <GraduationCap size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Quiz
+              </Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={styles.quizText}>
+                <Text variant="bodyLarge" style={styles.fieldLabel}>
+                  Ask with synonyms
+                </Text>
+                <Text variant="bodySmall" style={styles.hint}>
+                  Shows a synonym instead of the word, so you recall it from a
+                  related term.
+                </Text>
+              </View>
+              <Switch value={quizSynonyms} onValueChange={setQuizSynonyms} />
+            </View>
           </Card.Content>
         </Card>
 
@@ -103,4 +173,13 @@ const styles = StyleSheet.create({
   stepBtnDisabled: { borderColor: colors.border },
   goalNum: { color: colors.text, fontWeight: '700', minWidth: 64, textAlign: 'center' },
   goalUnit: { color: colors.muted, textAlign: 'center', marginTop: 4 },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  fieldLabel: { color: colors.text },
+  quizText: { flex: 1, paddingRight: 12 },
+  warning: { color: colors.red, marginTop: 8 },
 });
