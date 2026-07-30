@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,9 +42,16 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="headlineMedium" style={styles.title}>
-          AptitudeWords
-        </Text>
+        <View style={styles.brandRow}>
+          <Image
+            source={require('../../assets/logo-mark.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text variant="headlineMedium" style={styles.title}>
+            Vocab Hub
+          </Text>
+        </View>
 
         <LinearGradient
           colors={[colors.primary, colors.violet]}
@@ -172,7 +179,9 @@ export default function DashboardScreen() {
 const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 32 },
-  title: { color: colors.text, fontWeight: '700', marginBottom: 12 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  logo: { width: 32, height: 32 },
+  title: { color: colors.text, fontWeight: '700' },
   hero: { borderRadius: 20, padding: 20 },
   heroRow: { flexDirection: 'row', alignItems: 'center' },
   heroLeft: { flex: 1 },

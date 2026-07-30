@@ -1,5 +1,5 @@
 {
-  "name": "aptitudewords",
+  "name": "vocab-hub",
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {

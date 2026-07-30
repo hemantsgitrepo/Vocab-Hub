@@ -161,7 +161,7 @@ export default function SettingsScreen() {
               About
             </Text>
             <Text variant="bodyMedium" style={styles.hint}>
-              AptitudeWords stores everything on your device — no account, no
+              Vocab Hub stores everything on your device — no account, no
               cloud. Word definitions come from the Free Dictionary API, and audio
               playback uses your phone's built-in text-to-speech.
             </Text>

@@ -1,4 +1,4 @@
-# AptitudeWords Project Conventions
+# Vocab Hub Project Conventions
 
 ## Tech Stack & Core Libraries
 - **Framework:** React Native with Expo (Managed Workflow)
