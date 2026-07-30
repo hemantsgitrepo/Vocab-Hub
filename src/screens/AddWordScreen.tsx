@@ -13,7 +13,7 @@ import { Sparkles, Volume2 } from 'lucide-react-native';
 import { lookupWord } from '../api/dictionary';
 import { speakOnce } from '../lib/tts';
 import { capitalizeFirst } from '../lib/text';
-import { createWord } from '../db/words';
+import { createWord, wordExists } from '../db/words';
 import { DifficultyLevel } from '../db/models/Word';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
@@ -93,6 +93,10 @@ export default function AddWordScreen() {
     }
     setSaving(true);
     try {
+      if (await wordExists(form.word)) {
+        setSnack(`"${capitalizeFirst(form.word)}" is already in your list.`);
+        return;
+      }
       await createWord({
         word: form.word,
         pronunciation: form.pronunciation,

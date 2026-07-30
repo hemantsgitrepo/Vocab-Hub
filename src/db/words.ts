@@ -17,6 +17,14 @@ export interface NewWordInput {
   difficultyLevel?: DifficultyLevel;
 }
 
+/** Case-insensitive check so "meticulous" and "Meticulous" count as the same word. */
+export async function wordExists(word: string): Promise<boolean> {
+  const target = word.trim().toLowerCase();
+  if (!target) return false;
+  const all = await fetchAllWords();
+  return all.some((w) => w.word.toLowerCase() === target);
+}
+
 export function createWord(input: NewWordInput): Promise<Word> {
   return database.write(() =>
     wordsCollection.create((w) => {
