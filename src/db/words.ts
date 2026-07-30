@@ -57,6 +57,10 @@ export function setPracticeStatus(word: Word, status: PracticeStatus): Promise<W
   );
 }
 
+export function deleteWord(word: Word): Promise<void> {
+  return database.write(() => word.destroyPermanently());
+}
+
 /** All words, newest first. Observable — screens subscribe and stay live. */
 export function observeAllWords() {
   return wordsCollection.query(Q.sortBy('created_at', Q.desc)).observe();

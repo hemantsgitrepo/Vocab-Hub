@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BookOpen, Flame, Trophy } from 'lucide-react-native';
+import { BookOpen, Flame, Trash, Trophy } from 'lucide-react-native';
 import { useAllWords, useDailyGoal } from '../hooks';
 import { AppColors, difficultyColor } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 import { computeStreak, countToday } from '../lib/streak';
+import { deleteWord } from '../db/words';
 
 export default function DashboardScreen() {
   const { colors } = useAppTheme();
@@ -20,6 +21,21 @@ export default function DashboardScreen() {
   const mastered = words.filter((w) => w.practiceStatus === 'mastered').length;
   const progress = goal > 0 ? Math.min(today / goal, 1) : 0;
   const recent = words.slice(0, 5);
+
+  const confirmDelete = (word: typeof words[0]) => {
+    Alert.alert(
+      'Delete this word?',
+      `"${word.word}" cannot be recovered once deleted.`,
+      [
+        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        {
+          text: 'Delete',
+          onPress: () => deleteWord(word).catch(() => {}),
+          style: 'destructive',
+        },
+      ]
+    );
+  };
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -116,16 +132,25 @@ export default function DashboardScreen() {
                       {[w.pronunciation, w.partOfSpeech].filter(Boolean).join('  ·  ')}
                     </Text>
                   </View>
-                  <Chip
-                    compact
-                    textStyle={styles.chipText}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: difficultyColor[w.difficultyLevel] + '22' },
-                    ]}
-                  >
-                    {w.difficultyLevel}
-                  </Chip>
+                  <View style={styles.wordRight}>
+                    <Chip
+                      compact
+                      textStyle={styles.chipText}
+                      style={[
+                        styles.chip,
+                        { backgroundColor: difficultyColor[w.difficultyLevel] + '22' },
+                      ]}
+                    >
+                      {w.difficultyLevel}
+                    </Chip>
+                    <Pressable
+                      onPress={() => confirmDelete(w)}
+                      style={styles.deleteBtn}
+                      hitSlop={8}
+                    >
+                      <Trash size={18} color={colors.red} />
+                    </Pressable>
+                  </View>
                 </View>
                 <Text variant="bodyMedium" numberOfLines={2} style={styles.meaning}>
                   {w.meaning}
@@ -174,12 +199,14 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   emptyCard: { backgroundColor: colors.surface },
   emptyText: { color: colors.muted, lineHeight: 20 },
   wordCard: { backgroundColor: colors.surface, marginBottom: 10 },
-  wordRow: { flexDirection: 'row', alignItems: 'center' },
+  wordRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   wordLeft: { flex: 1 },
   wordText: { color: colors.text, fontWeight: '700' },
   pron: { color: colors.muted },
+  wordRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chip: { height: 28 },
   chipText: { fontSize: 12, lineHeight: 14, color: colors.text },
+  deleteBtn: { padding: 4 },
   meaning: { color: colors.muted, marginTop: 6 },
   forms: { color: colors.violet, marginTop: 6 },
 });
