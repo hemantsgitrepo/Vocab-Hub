@@ -1,10 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Image, ImageSourcePropType, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card, Divider, Switch, Text } from 'react-native-paper';
+import { Button, Card, Dialog, Divider, Portal, Snackbar, Switch, Text } from 'react-native-paper';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   Brain,
+  Download,
   ExternalLink,
+  FileText,
   GraduationCap,
   Globe,
   Headphones,
@@ -15,9 +20,12 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  Upload,
 } from 'lucide-react-native';
 import { useDailyGoal, useQuizSynonyms, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
+import { fetchAllWords } from '../db/words';
+import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 
@@ -103,6 +111,72 @@ export default function SettingsScreen() {
   const [travelFields, setTravelFields] = useTravelFields();
   // Same stored preference the Quiz setup screen uses; both re-read on focus.
   const [quizSynonyms, setQuizSynonyms] = useQuizSynonyms();
+  const [busy, setBusy] = useState<'export' | 'template' | 'import' | null>(null);
+  const [snack, setSnack] = useState('');
+  const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
+
+  const shareCsv = async (fileName: string, content: string, dialogTitle: string) => {
+    const file = new File(Paths.cache, fileName);
+    file.create({ overwrite: true });
+    file.write(content);
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle });
+    } else {
+      setSnack("Sharing isn't available on this device.");
+    }
+  };
+
+  const exportWords = async () => {
+    setBusy('export');
+    try {
+      const words = await fetchAllWords();
+      if (words.length === 0) {
+        setSnack("Add a word first — there's nothing to export yet.");
+        return;
+      }
+      await shareCsv('vocab-hub-words.csv', wordsToCsv(words), 'Export Vocab Hub words');
+    } catch (e) {
+      console.error('CSV_EXPORT_ERROR', e);
+      setSnack('Something went wrong while exporting.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const downloadTemplate = async () => {
+    setBusy('template');
+    try {
+      await shareCsv('vocab-hub-template.csv', CSV_TEMPLATE, 'Vocab Hub CSV template');
+    } catch (e) {
+      console.error('CSV_TEMPLATE_ERROR', e);
+      setSnack('Something went wrong while preparing the template.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const importCsv = async () => {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: ['text/csv', 'text/comma-separated-values', 'text/plain', 'application/vnd.ms-excel', '*/*'],
+      copyToCacheDirectory: true,
+    });
+    if (picked.canceled) return;
+    setBusy('import');
+    try {
+      const text = await new File(picked.assets[0].uri).text();
+      const { imported, errors } = await importWordsFromCsv(text);
+      if (errors.length > 0) {
+        setImportErrors(errors);
+      } else {
+        setSnack(`Imported ${imported} word${imported === 1 ? '' : 's'}.`);
+      }
+    } catch (e) {
+      console.error('CSV_IMPORT_ERROR', e);
+      setSnack("Could not read that file — make sure it's a CSV file.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const bump = (delta: number) => {
     const next = Math.min(MAX_GOAL, Math.max(MIN_GOAL, goal + delta));
@@ -244,6 +318,51 @@ export default function SettingsScreen() {
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.goalHeader}>
+              <FileText size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Import &amp; export
+              </Text>
+            </View>
+            <Text variant="bodyMedium" style={styles.hint}>
+              Back up your words to a CSV file, or bring in words from a
+              spreadsheet.
+            </Text>
+            <Button
+              mode="outlined"
+              icon={({ size, color }) => <Download size={size} color={color} />}
+              onPress={exportWords}
+              loading={busy === 'export'}
+              disabled={busy !== null}
+              style={styles.dataBtn}
+            >
+              Export words (CSV)
+            </Button>
+            <Button
+              mode="outlined"
+              icon={({ size, color }) => <FileText size={size} color={color} />}
+              onPress={downloadTemplate}
+              loading={busy === 'template'}
+              disabled={busy !== null}
+              style={styles.dataBtn}
+            >
+              Download CSV template
+            </Button>
+            <Button
+              mode="contained-tonal"
+              icon={({ size, color }) => <Upload size={size} color={color} />}
+              onPress={importCsv}
+              loading={busy === 'import'}
+              disabled={busy !== null}
+              style={styles.dataBtn}
+            >
+              Import words (CSV)
+            </Button>
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
               <Info size={22} color={colors.primary} />
               <Text variant="titleMedium" style={styles.cardTitle}>
                 About Vocab Hub
@@ -295,6 +414,42 @@ export default function SettingsScreen() {
           </Card.Content>
         </Card>
       </ScrollView>
+
+      <Portal>
+        <Dialog visible={importErrors !== null} onDismiss={() => setImportErrors(null)}>
+          <Dialog.Icon icon={({ size }) => <FileText size={size} color={colors.red} />} />
+          <Dialog.Title style={styles.dialogTitle}>
+            {importErrors?.length === 1
+              ? '1 problem found in your file'
+              : `${importErrors?.length ?? 0} problems found in your file`}
+          </Dialog.Title>
+          <Dialog.ScrollArea style={styles.dialogScrollArea}>
+            <ScrollView contentContainerStyle={styles.dialogScrollContent}>
+              <Text variant="bodyMedium" style={styles.dialogIntro}>
+                Nothing was imported. Fix the issues below in your spreadsheet
+                and try again.
+              </Text>
+              {importErrors?.map((err, i) => (
+                <View key={i} style={styles.errorRow}>
+                  <Text variant="labelMedium" style={styles.errorRowNum}>
+                    Row {err.row}
+                  </Text>
+                  <Text variant="bodyMedium" style={styles.errorMessage}>
+                    {err.message}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={() => setImportErrors(null)}>Close</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      <Snackbar visible={!!snack} onDismiss={() => setSnack('')} duration={3000}>
+        {snack}
+      </Snackbar>
     </SafeAreaView>
   );
 }
@@ -359,4 +514,12 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   partnerLogoFallback: { width: 100, height: 40, alignItems: 'center', justifyContent: 'center' },
   partnerLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   partnerLinkText: { color: colors.primary, fontWeight: '600' },
+  dataBtn: { marginTop: 12 },
+  dialogTitle: { color: colors.text, textAlign: 'center' },
+  dialogScrollArea: { maxHeight: 340, paddingHorizontal: 0 },
+  dialogScrollContent: { paddingHorizontal: 24, paddingBottom: 8 },
+  dialogIntro: { color: colors.muted, marginBottom: 12, lineHeight: 20 },
+  errorRow: { marginBottom: 12 },
+  errorRowNum: { color: colors.red, fontWeight: '700', marginBottom: 2 },
+  errorMessage: { color: colors.text, lineHeight: 20 },
 });
