@@ -66,3 +66,16 @@ export async function getQuizSynonyms(): Promise<boolean> {
 export async function setQuizSynonyms(enabled: boolean): Promise<void> {
   await database.localStorage.set(QUIZ_SYNONYMS_KEY, enabled);
 }
+
+export const DEFAULT_DARK_MODE = false;
+
+const DARK_MODE_KEY = 'settings.darkMode';
+
+export async function getDarkMode(): Promise<boolean> {
+  const value = await database.localStorage.get<boolean>(DARK_MODE_KEY);
+  return value ?? DEFAULT_DARK_MODE;
+}
+
+export async function setDarkMode(enabled: boolean): Promise<void> {
+  await database.localStorage.set(DARK_MODE_KEY, enabled);
+}

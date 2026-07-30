@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -15,7 +15,8 @@ import { speakOnce } from '../lib/tts';
 import { capitalizeFirst } from '../lib/text';
 import { createWord } from '../db/words';
 import { DifficultyLevel } from '../db/models/Word';
-import { colors } from '../theme';
+import { AppColors } from '../theme';
+import { useAppTheme } from '../ThemeContext';
 
 const EMPTY = {
   word: '',
@@ -33,6 +34,7 @@ const EMPTY = {
 };
 
 export default function AddWordScreen() {
+  const { colors } = useAppTheme();
   const [form, setForm] = useState(EMPTY);
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('medium');
   const [loading, setLoading] = useState(false);
@@ -114,6 +116,8 @@ export default function AddWordScreen() {
       setSaving(false);
     }
   };
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -278,7 +282,7 @@ export default function AddWordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },

@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BookOpen, Flame, Trophy } from 'lucide-react-native';
 import { useAllWords, useDailyGoal } from '../hooks';
-import { colors, difficultyColor } from '../theme';
+import { AppColors, difficultyColor } from '../theme';
+import { useAppTheme } from '../ThemeContext';
 import { computeStreak, countToday } from '../lib/streak';
 
 export default function DashboardScreen() {
+  const { colors } = useAppTheme();
   const words = useAllWords();
   const [goal] = useDailyGoal();
 
@@ -18,6 +20,8 @@ export default function DashboardScreen() {
   const mastered = words.filter((w) => w.practiceStatus === 'mastered').length;
   const progress = goal > 0 ? Math.min(today / goal, 1) : 0;
   const recent = words.slice(0, 5);
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -140,7 +144,7 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 32 },
   title: { color: colors.text, fontWeight: '700', marginBottom: 12 },

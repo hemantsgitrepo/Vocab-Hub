@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, SegmentedButtons, Text } from 'react-native-paper';
@@ -15,7 +15,8 @@ import Word from '../db/models/Word';
 import { useAllWords, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { initTts } from '../lib/tts';
-import { colors } from '../theme';
+import { AppColors } from '../theme';
+import { useAppTheme } from '../ThemeContext';
 
 /** Builds the spoken segments for one word, in canonical field order. */
 function segmentsFor(w: Word, enabled: TravelField[]): string[] {
@@ -37,6 +38,7 @@ const RATES: Record<string, number> = { '0.8': 0.4, '1': 0.5, '1.25': 0.625 };
 const PITCHES: Record<string, number> = { low: 0.8, normal: 1, high: 1.2 };
 
 export default function TravelModeScreen() {
+  const { colors } = useAppTheme();
   const words = useAllWords();
   const [travelFields] = useTravelFields();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -186,6 +188,8 @@ export default function TravelModeScreen() {
     );
   };
 
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
@@ -284,7 +288,7 @@ export default function TravelModeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 16 },

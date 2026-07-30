@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Divider, Switch, Text } from 'react-native-paper';
-import { GraduationCap, Headphones, Minus, Plus, Target } from 'lucide-react-native';
+import { GraduationCap, Headphones, Minus, Moon, Plus, Target } from 'lucide-react-native';
 import { useDailyGoal, useQuizSynonyms, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
-import { colors } from '../theme';
+import { AppColors } from '../theme';
+import { useAppTheme } from '../ThemeContext';
 
 const MIN_GOAL = 1;
 const MAX_GOAL = 50;
 
 export default function SettingsScreen() {
+  const { colors, isDark, setDark } = useAppTheme();
   const [goal, setGoal] = useDailyGoal();
   const [travelFields, setTravelFields] = useTravelFields();
   // Same stored preference the Quiz setup screen uses; both re-read on focus.
@@ -31,12 +33,36 @@ export default function SettingsScreen() {
     setTravelFields(next);
   };
 
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="headlineMedium" style={styles.title}>
           Settings
         </Text>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
+              <Moon size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Appearance
+              </Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={styles.quizText}>
+                <Text variant="bodyLarge" style={styles.fieldLabel}>
+                  Dark mode
+                </Text>
+                <Text variant="bodySmall" style={styles.hint}>
+                  Switch the app to a dark theme.
+                </Text>
+              </View>
+              <Switch value={isDark} onValueChange={setDark} />
+            </View>
+          </Card.Content>
+        </Card>
 
         <Card style={styles.card}>
           <Card.Content>
@@ -146,7 +172,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 32 },
   title: { color: colors.text, fontWeight: '700', marginBottom: 12 },

@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, SegmentedButtons, Text } from 'react-native-paper';
 import Word, { PracticeStatus } from '../db/models/Word';
 import { fetchAllWords, setPracticeStatus, wordsFromPastDays } from '../db/words';
 import { useQuizSynonyms } from '../hooks';
-import { colors } from '../theme';
+import { AppColors } from '../theme';
+import { useAppTheme } from '../ThemeContext';
 
 type QuizType = 'flashcards' | 'mcq' | 'fill';
 type Phase = 'setup' | 'active' | 'done';
@@ -88,6 +89,7 @@ function bumpStatus(word: Word, correct: boolean) {
 }
 
 export default function QuizScreen() {
+  const { colors } = useAppTheme();
   const [phase, setPhase] = useState<Phase>('setup');
   const [type, setType] = useState<QuizType>('flashcards');
   const [source, setSource] = useState('all');
@@ -148,6 +150,8 @@ export default function QuizScreen() {
   };
 
   const q = questions[qIndex];
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -348,7 +352,7 @@ export default function QuizScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
