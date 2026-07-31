@@ -5,24 +5,50 @@ import { PaperProvider } from 'react-native-paper';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GraduationCap, Headphones, Home, PlusCircle, Settings } from 'lucide-react-native';
+import { View } from 'react-native';
 import { ThemeProvider, useAppTheme } from './src/ThemeContext';
 import { DialogProvider } from './src/ui/AppDialogs';
+import { UnlockProvider } from './src/ui/UnlockProvider';
+import { useOnboarding } from './src/hooks';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddWordScreen from './src/screens/AddWordScreen';
 import TravelModeScreen from './src/screens/TravelModeScreen';
 import QuizScreen from './src/screens/QuizScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 
 const Tab = createBottomTabNavigator();
 
 function AppShell() {
   const { colors, paperTheme, navTheme, isDark } = useAppTheme();
+  const [onboarded, completeOnboarding] = useOnboarding();
+
+  // Hold on a themed blank until the stored flag resolves, so returning users
+  // never see the carousel flash before it's dismissed.
+  if (onboarded === null) {
+    return (
+      <PaperProvider theme={paperTheme}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <View style={{ flex: 1, backgroundColor: colors.background }} />
+      </PaperProvider>
+    );
+  }
+
+  if (!onboarded) {
+    return (
+      <PaperProvider theme={paperTheme}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <OnboardingScreen onDone={completeOnboarding} />
+      </PaperProvider>
+    );
+  }
 
   return (
     <PaperProvider theme={paperTheme}>
       <NavigationContainer theme={navTheme}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <DialogProvider>
+        <UnlockProvider>
         <Tab.Navigator
           screenOptions={{
             headerShown: false,
@@ -80,6 +106,7 @@ function AppShell() {
             }}
           />
         </Tab.Navigator>
+        </UnlockProvider>
         </DialogProvider>
       </NavigationContainer>
     </PaperProvider>

@@ -26,6 +26,8 @@ import {
 import Word, { PracticeStatus } from '../db/models/Word';
 import { fetchAllWords, setPracticeStatus, wordsFromPastDays } from '../db/words';
 import { useQuizAntonyms, useQuizSynonyms } from '../hooks';
+import { QUIZ_GUIDE } from '../lib/guides';
+import { useInfoSheet } from '../ui/InfoSheet';
 import { playSfx } from '../lib/sfx';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
@@ -148,6 +150,7 @@ function bumpStatus(word: Word, correct: boolean) {
 export default function QuizScreen() {
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
+  const help = useInfoSheet(QUIZ_GUIDE, { onDark: true });
   const [phase, setPhase] = useState<Phase>('setup');
   const [type, setType] = useState<QuizType>('flashcards');
   const [source, setSource] = useState('all');
@@ -363,6 +366,7 @@ export default function QuizScreen() {
                 Active recall turns learned words into owned words.
               </Text>
             </View>
+            {help.button}
           </LinearGradient>
 
           <Text variant="titleMedium" style={styles.sectionTitle}>
@@ -829,6 +833,8 @@ export default function QuizScreen() {
           {pct >= 80 && <Confetti count={34} />}
         </View>
       )}
+
+      {help.sheet}
     </SafeAreaView>
   );
 }

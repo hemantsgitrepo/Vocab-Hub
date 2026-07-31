@@ -3,8 +3,10 @@ import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BookOpen, Flame, Trash, Trophy } from 'lucide-react-native';
+import { BookOpen, Flame, Sparkles, Trash, Trophy } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAllWords, useDailyGoal } from '../hooks';
+import EmptyState from '../ui/EmptyState';
 import { AppColors, difficultyColor } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 import { bestStreak, computeStreak, countMetDays, countToday, dayHistory } from '../lib/streak';
@@ -17,6 +19,7 @@ const JOURNEY_DAYS = 14;
 
 export default function DashboardScreen() {
   const { colors } = useAppTheme();
+  const navigation = useNavigation<any>();
   const dialogs = useAppDialogs();
   const words = useAllWords();
   const [goal] = useDailyGoal();
@@ -134,14 +137,14 @@ export default function DashboardScreen() {
           Recently added
         </Text>
         {recent.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Card.Content>
-              <Text variant="bodyMedium" style={styles.emptyText}>
-                No words yet. Head to the Add tab to capture your first word —
-                the dictionary will fill in the details for you.
-              </Text>
-            </Card.Content>
-          </Card>
+          <EmptyState
+            Icon={Sparkles}
+            title="Your collection starts here"
+            message="Type a word and the dictionary fills in the pronunciation, meaning, synonyms, antonyms, example sentence and origin for you."
+            actionLabel="Add your first word"
+            onAction={() => navigation.navigate('Add')}
+            footnote={`${goal} words a day keeps your streak alive`}
+          />
         ) : (
           recent.map((w) => (
             <Card key={w.id} style={styles.wordCard}>
@@ -234,8 +237,6 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   statNum: { color: colors.text, fontWeight: '700' },
   statLabel: { color: colors.muted },
   sectionTitle: { color: colors.text, fontWeight: '600', marginTop: 24, marginBottom: 8 },
-  emptyCard: { backgroundColor: colors.surface },
-  emptyText: { color: colors.muted, lineHeight: 20 },
   wordCard: { backgroundColor: colors.surface, marginBottom: 10 },
   wordRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   wordLeft: { flex: 1 },

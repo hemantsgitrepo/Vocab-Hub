@@ -10,25 +10,19 @@ import {
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import {
-  Blocks,
-  Brain,
-  Crown,
-  Gamepad2,
-  Hexagon,
-  Lock,
-  Play,
-  PlusCircle,
-  Puzzle,
-  Trophy,
-} from 'lucide-react-native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
+import { Gamepad2, Lock, Play, PlusCircle, Trophy } from 'lucide-react-native';
 import { AppColors } from '../../theme';
 import { useAppTheme } from '../../ThemeContext';
 import { useAllWords, useGameUnlockStatus } from '../../hooks';
 import { getGameStat, getMemoryBest, getMillionaireBest } from '../../db/settings';
 import { initSfx, playSfx } from '../../lib/sfx';
 import { GAMES, GameKey } from '../../lib/games';
+import { GAME_GUIDES } from '../../lib/guides';
+import { CARD_GRADIENTS, CARD_ICONS } from './gameVisuals';
+import { useUnlockCelebration } from '../../ui/UnlockProvider';
+import UnlockCelebration from '../../ui/UnlockCelebration';
+import { InfoSheet } from '../../ui/InfoSheet';
 import VocabMillionaire from './VocabMillionaire';
 import MemoryMatch from './MemoryMatch';
 import ScrabbleGame from './ScrabbleGame';
@@ -36,22 +30,6 @@ import CrosswordGame from './CrosswordGame';
 import SpellingBeeGame from './SpellingBeeGame';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const CARD_GRADIENTS: Record<GameKey, [string, string]> = {
-  millionaire: ['#7C3AED', '#DB2777'],
-  memory: ['#059669', '#0D9488'],
-  scrabble: ['#D97706', '#B45309'],
-  crossword: ['#2563EB', '#4F46E5'],
-  bee: ['#EAB308', '#CA8A04'],
-};
-
-const CARD_ICONS: Record<GameKey, typeof Crown> = {
-  millionaire: Crown,
-  memory: Brain,
-  scrabble: Blocks,
-  crossword: Puzzle,
-  bee: Hexagon,
-};
 
 const ZERO_BESTS: Record<GameKey, number> = {
   millionaire: 0,
@@ -90,7 +68,13 @@ export default function GameArcade() {
 
   const [openGame, setOpenGame] = useState<GameKey | null>(null);
   const [teaser, setTeaser] = useState<GameKey | null>(null);
+  const [guideFor, setGuideFor] = useState<GameKey | null>(null);
   const [bests, setBests] = useState<Record<GameKey, number>>(ZERO_BESTS);
+
+  // The arcade is mounted on two tabs at once, so only the focused copy shows
+  // the celebration — otherwise it would render twice.
+  const isFocused = useIsFocused();
+  const { celebration, dismiss } = useUnlockCelebration();
 
   const refreshBests = useCallback(() => {
     Promise.all([
@@ -387,6 +371,19 @@ export default function GameArcade() {
                       </Text>
                     </LinearGradient>
                   </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      playSfx('tap');
+                      const key = teaserGame.key;
+                      setTeaser(null);
+                      setGuideFor(key);
+                    }}
+                    hitSlop={8}
+                  >
+                    <Text variant="labelLarge" style={styles.sheetGuide}>
+                      How this game works
+                    </Text>
+                  </Pressable>
                   <Pressable onPress={() => setTeaser(null)} hitSlop={8}>
                     <Text variant="labelLarge" style={styles.sheetDismiss}>
                       I'll be back
@@ -440,12 +437,42 @@ export default function GameArcade() {
         }}
         words={words}
       />
+
+      {/* ----- Rules preview for a still-locked game ----- */}
+      {guideFor && (
+        <InfoSheet
+          visible
+          onClose={() => setGuideFor(null)}
+          guide={GAME_GUIDES[guideFor]}
+        />
+      )}
+
+      {/* ----- Milestone unlock celebration ----- */}
+      {isFocused && (
+        <UnlockCelebration
+          game={celebration?.game ?? null}
+          alsoUnlocked={celebration?.alsoUnlocked ?? 0}
+          onPlay={() => {
+            const key = celebration?.game.key;
+            dismiss();
+            if (key) setOpenGame(key);
+          }}
+          onClose={dismiss}
+        />
+      )}
     </View>
   );
 }
 
 const makeStyles = (colors: AppColors) =>
   StyleSheet.create({
+    sheetGuide: {
+      color: colors.primary,
+      textAlign: 'center',
+      fontWeight: '700',
+      marginTop: 14,
+      padding: 4,
+    },
     titleRow: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -12,7 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Brain, RotateCcw, Sparkles, Trophy, X } from 'lucide-react-native';
+import { Brain, HelpCircle, RotateCcw, Sparkles, Trophy, X } from 'lucide-react-native';
+import { GAME_GUIDES } from '../../lib/guides';
+import { InfoSheet } from '../../ui/InfoSheet';
 import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getMemoryBest, setMemoryBest } from '../../db/settings';
@@ -57,6 +59,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
   const [faceUp, setFaceUp] = useState<string[]>([]); // ids currently flipped (max 2)
   const [matched, setMatched] = useState<Set<string>>(new Set()); // pairIds
   const [moves, setMoves] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [best, setBest] = useState(0);
   const [newBest, setNewBest] = useState(false);
   const [won, setWon] = useState(false);
@@ -232,6 +235,18 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
             <Pressable onPress={onClose} hitSlop={10} style={styles.headerBtn}>
               <X size={20} color={C.muted} />
             </Pressable>
+            <Pressable
+              onPress={() => {
+                playSfx('tap');
+                setHelpOpen(true);
+              }}
+              hitSlop={10}
+              style={styles.headerBtn}
+              accessibilityRole="button"
+              accessibilityLabel="How Memory Match works"
+            >
+              <HelpCircle size={18} color={C.muted} />
+            </Pressable>
             <View style={styles.headerCenter}>
               <View style={styles.titleRow}>
                 <Brain size={18} color={C.mint} />
@@ -248,6 +263,12 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
               <RotateCcw size={18} color={C.muted} />
             </Pressable>
           </View>
+
+          <InfoSheet
+            visible={helpOpen}
+            onClose={() => setHelpOpen(false)}
+            guide={GAME_GUIDES.memory}
+          />
 
           {/* Progress dots */}
           <View style={styles.pairDots}>

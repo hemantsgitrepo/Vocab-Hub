@@ -13,7 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Blocks, Eraser, Shuffle, Sparkles, Trophy, X } from 'lucide-react-native';
+import { Blocks, Eraser, HelpCircle, Shuffle, Sparkles, Trophy, X } from 'lucide-react-native';
+import { GAME_GUIDES } from '../../lib/guides';
+import { InfoSheet } from '../../ui/InfoSheet';
 import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getGameStat, setGameStat } from '../../db/settings';
@@ -71,6 +73,7 @@ export default function ScrabbleGame({ visible, onClose, words }: Props) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [done, setDone] = useState(false);
   const [best, setBest] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [newBest, setNewBest] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -270,6 +273,18 @@ export default function ScrabbleGame({ visible, onClose, words }: Props) {
             <Pressable onPress={onClose} hitSlop={10} style={styles.headerBtn}>
               <X size={20} color={C.muted} />
             </Pressable>
+            <Pressable
+              onPress={() => {
+                playSfx('tap');
+                setHelpOpen(true);
+              }}
+              hitSlop={10}
+              style={styles.headerBtn}
+              accessibilityRole="button"
+              accessibilityLabel="How Vocab Scrabble works"
+            >
+              <HelpCircle size={18} color={C.muted} />
+            </Pressable>
             <View style={styles.headerCenter}>
               <View style={styles.titleRow}>
                 <Blocks size={18} color={C.gold} />
@@ -291,6 +306,12 @@ export default function ScrabbleGame({ visible, onClose, words }: Props) {
               </Text>
             </View>
           </View>
+
+          <InfoSheet
+            visible={helpOpen}
+            onClose={() => setHelpOpen(false)}
+            guide={GAME_GUIDES.scrabble}
+          />
 
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
             <Text variant="bodySmall" style={styles.instructions}>

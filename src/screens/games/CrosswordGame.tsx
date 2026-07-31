@@ -11,7 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Delete, Puzzle, RotateCcw, Sparkles, Trophy, X } from 'lucide-react-native';
+import { Delete, HelpCircle, Puzzle, RotateCcw, Sparkles, Trophy, X } from 'lucide-react-native';
+import { GAME_GUIDES } from '../../lib/guides';
+import { InfoSheet } from '../../ui/InfoSheet';
 import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getGameStat, setGameStat } from '../../db/settings';
@@ -58,6 +60,7 @@ export default function CrosswordGame({ visible, onClose, words }: Props) {
   const [solved, setSolved] = useState<Set<number>>(new Set());
   const [won, setWon] = useState(false);
   const [solvedCount, setSolvedCount] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const shakeAnim = useMemo(() => new Animated.Value(0), []);
@@ -262,6 +265,18 @@ export default function CrosswordGame({ visible, onClose, words }: Props) {
             <Pressable onPress={onClose} hitSlop={10} style={styles.headerBtn}>
               <X size={20} color={C.muted} />
             </Pressable>
+            <Pressable
+              onPress={() => {
+                playSfx('tap');
+                setHelpOpen(true);
+              }}
+              hitSlop={10}
+              style={styles.headerBtn}
+              accessibilityRole="button"
+              accessibilityLabel="How Context Crossword works"
+            >
+              <HelpCircle size={18} color={C.muted} />
+            </Pressable>
             <View style={styles.headerCenter}>
               <View style={styles.titleRow}>
                 <Puzzle size={18} color={C.blue} />
@@ -278,6 +293,12 @@ export default function CrosswordGame({ visible, onClose, words }: Props) {
               <RotateCcw size={18} color={C.muted} />
             </Pressable>
           </View>
+
+          <InfoSheet
+            visible={helpOpen}
+            onClose={() => setHelpOpen(false)}
+            guide={GAME_GUIDES.crossword}
+          />
 
           {/* Grid */}
           <Animated.View

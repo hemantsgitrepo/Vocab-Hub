@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Crown,
   Gem,
+  HelpCircle,
   Lightbulb,
   MessageSquareQuote,
   Scissors,
@@ -23,6 +24,8 @@ import {
   Trophy,
   X,
 } from 'lucide-react-native';
+import { GAME_GUIDES } from '../../lib/guides';
+import { InfoSheet } from '../../ui/InfoSheet';
 import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getMillionaireBest, setMillionaireBest } from '../../db/settings';
@@ -73,6 +76,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
   const dialogs = useAppDialogs();
 
   const [phase, setPhase] = useState<Phase>('intro');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [questions, setQuestions] = useState<MillionaireQuestion[]>([]);
   const [qIndex, setQIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -362,6 +366,17 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
                   </LinearGradient>
                 </Pressable>
               </Animated.View>
+              <Pressable
+                onPress={() => {
+                  playSfx('tap');
+                  setHelpOpen(true);
+                }}
+                hitSlop={8}
+              >
+                <Text variant="labelLarge" style={styles.introRules}>
+                  How the game works
+                </Text>
+              </Pressable>
               <Pressable onPress={onClose} hitSlop={8}>
                 <Text variant="labelLarge" style={styles.introExit}>
                   Maybe later
@@ -388,7 +403,18 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
                     {fmt(LADDER[qIndex])} pts
                   </Animated.Text>
                 </View>
-                <View style={styles.quitBtn} />
+                <Pressable
+                  onPress={() => {
+                    playSfx('tap');
+                    setHelpOpen(true);
+                  }}
+                  hitSlop={10}
+                  style={styles.quitBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="How Vocab Millionaire works"
+                >
+                  <HelpCircle size={19} color={C.muted} />
+                </Pressable>
               </View>
 
               {/* Ladder ticks */}
@@ -645,6 +671,11 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
 
           {/* Milestone confetti during play */}
           {phase === 'playing' && burst > 0 && <Confetti key={`play-${burst}`} count={20} />}
+          <InfoSheet
+            visible={helpOpen}
+            onClose={() => setHelpOpen(false)}
+            guide={GAME_GUIDES.millionaire}
+          />
         </SafeAreaView>
       </LinearGradient>
     </Modal>
@@ -690,6 +721,7 @@ const styles = StyleSheet.create({
     marginTop: 26,
   },
   playBtnText: { color: '#3B2300', fontWeight: '800' },
+  introRules: { color: C.gold, marginTop: 18, textAlign: 'center', fontWeight: '700' },
   introExit: { color: C.muted, marginTop: 18, textAlign: 'center' },
 
   // Top bar

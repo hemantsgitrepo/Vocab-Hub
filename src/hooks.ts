@@ -12,11 +12,13 @@ import {
   TravelField,
   getDailyGoal,
   getGameSounds,
+  getOnboardingComplete,
   getQuizAntonyms,
   getQuizSynonyms,
   getTravelFields,
   setDailyGoal,
   setGameSounds,
+  setOnboardingComplete,
   setQuizAntonyms,
   setQuizSynonyms,
   setTravelFields,
@@ -64,6 +66,22 @@ export function useGameUnlockStatus(): GameUnlockStatus {
     };
   }
   return { totalWords, games };
+}
+
+/**
+ * First-launch onboarding gate. `null` while the stored flag is still loading,
+ * so the carousel never flashes for a returning user.
+ */
+export function useOnboarding(): [boolean | null, () => void] {
+  const [done, setDone] = useState<boolean | null>(null);
+  useEffect(() => {
+    getOnboardingComplete().then(setDone);
+  }, []);
+  const complete = () => {
+    setDone(true);
+    setOnboardingComplete(true);
+  };
+  return [done, complete];
 }
 
 /** Daily goal, re-read whenever the screen gains focus so edits in Settings propagate. */

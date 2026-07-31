@@ -5,18 +5,23 @@ import { Button, Card, SegmentedButtons, Text } from 'react-native-paper';
 import Tts from 'react-native-tts';
 import {
   CheckSquare,
+  Headphones,
   Pause,
   Play,
   Repeat,
   SkipForward,
   Square,
 } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 import Word from '../db/models/Word';
 import { useAllWords, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { initTts } from '../lib/tts';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
+import { TRAVEL_GUIDE } from '../lib/guides';
+import { useInfoSheet } from '../ui/InfoSheet';
+import EmptyState from '../ui/EmptyState';
 
 /** Builds the spoken segments for one word, in canonical field order. */
 function segmentsFor(w: Word, enabled: TravelField[]): string[] {
@@ -39,6 +44,8 @@ const PITCHES: Record<string, number> = { low: 0.8, normal: 1, high: 1.2 };
 
 export default function TravelModeScreen() {
   const { colors } = useAppTheme();
+  const navigation = useNavigation<any>();
+  const help = useInfoSheet(TRAVEL_GUIDE);
   const words = useAllWords();
   const [travelFields] = useTravelFields();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -193,19 +200,27 @@ export default function TravelModeScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text variant="headlineMedium" style={styles.title}>
-          Travel mode
-        </Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>
-          Listen to your words back-to-back, hands-free.
-        </Text>
+        <View style={styles.headerText}>
+          <Text variant="headlineMedium" style={styles.title}>
+            Travel mode
+          </Text>
+          <Text variant="bodyMedium" style={styles.subtitle}>
+            Listen to your words back-to-back, hands-free.
+          </Text>
+        </View>
+        {help.button}
       </View>
 
       {words.length === 0 ? (
         <View style={styles.empty}>
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            Add some words first — then they'll show up here as a playlist.
-          </Text>
+          <EmptyState
+            Icon={Headphones}
+            title="Nothing queued yet"
+            message="Travel Mode reads your collection aloud so you can revise while commuting, walking or cooking. Add a few words and they'll queue up here automatically."
+            actionLabel="Add your first word"
+            onAction={() => navigation.navigate('Add')}
+            footnote="Tap ? above to see how playback works"
+          />
         </View>
       ) : (
         <FlatList
@@ -284,6 +299,8 @@ export default function TravelModeScreen() {
           </Pressable>
         </View>
       </View>
+
+      {help.sheet}
     </SafeAreaView>
   );
 }
@@ -291,11 +308,17 @@ export default function TravelModeScreen() {
 const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingTop: 16 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  headerText: { flex: 1 },
   title: { color: colors.text, fontWeight: '700' },
   subtitle: { color: colors.muted, marginTop: 2 },
-  empty: { flex: 1, justifyContent: 'center', padding: 32 },
-  emptyText: { color: colors.muted, textAlign: 'center' },
+  empty: { flex: 1, justifyContent: 'center' },
   list: { padding: 16, paddingBottom: 8 },
   selectAll: { alignSelf: 'flex-end' },
   wordCard: { backgroundColor: colors.surface, marginBottom: 8 },

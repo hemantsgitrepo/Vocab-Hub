@@ -129,6 +129,41 @@ export async function setMemoryBest(moves: number): Promise<void> {
   await database.localStorage.set(MEMORY_BEST_KEY, moves);
 }
 
+/** Whether the first-launch onboarding carousel has been completed/skipped. */
+const ONBOARDING_KEY = 'settings.onboardingComplete';
+
+export async function getOnboardingComplete(): Promise<boolean> {
+  const value = await database.localStorage.get<boolean>(ONBOARDING_KEY);
+  return value ?? false;
+}
+
+export async function setOnboardingComplete(done: boolean): Promise<void> {
+  await database.localStorage.set(ONBOARDING_KEY, done);
+}
+
+/**
+ * Games whose unlock celebration has already played. Persisted so a milestone
+ * modal fires exactly once per game, even across restarts.
+ */
+const CELEBRATED_KEY = 'games.celebratedUnlocks';
+
+/** `null` means "never initialized" — distinct from an empty list. */
+export async function getCelebratedUnlocks(): Promise<string[] | null> {
+  const raw = await database.localStorage.get<string>(CELEBRATED_KEY);
+  if (raw == null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((k): k is string => typeof k === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export async function setCelebratedUnlocks(keys: string[]): Promise<void> {
+  await database.localStorage.set(CELEBRATED_KEY, JSON.stringify(keys));
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const DEFAULT_THEME_MODE: ThemeMode = 'system';
