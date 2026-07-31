@@ -59,10 +59,25 @@ const FEATURES = [
   },
 ] as const;
 
-const PARTNERS = [
+interface Partner {
+  name: string;
+  url: string;
+  logo: ImageSourcePropType;
+  /** Used on dark themes when the default asset lacks contrast there. */
+  logoDark?: ImageSourcePropType;
+}
+
+// Logos are transparent PNGs, so they sit on any surface in either theme.
+const PARTNERS: Partner[] = [
   { name: 'Jobmanch.ai', url: 'https://jobmanch.ai', logo: require('../../assets/Jobmanch Logo.png') },
-  { name: 'Upquarx.com', url: 'https://upquarx.com', logo: require('../../assets/Upquarx Logo.png') },
-] as const;
+  {
+    name: 'Upquarx.com',
+    url: 'https://upquarx.com',
+    logo: require('../../assets/Upquarx Logo.png'),
+    // This mark's black element would vanish against the dark charcoal surface.
+    logoDark: require('../../assets/Upquarx Logo Dark.png'),
+  },
+];
 
 async function openLink(url: string) {
   try {
@@ -121,7 +136,7 @@ const THEME_OPTIONS: { key: ThemeMode; label: string; Icon: typeof Sun }[] = [
 ];
 
 export default function SettingsScreen() {
-  const { colors, mode, setMode } = useAppTheme();
+  const { colors, isDark, mode, setMode } = useAppTheme();
   const [goal, setGoal] = useDailyGoal();
   const [travelFields, setTravelFields] = useTravelFields();
   // Same stored preferences the Quiz setup screen uses; both re-read on focus.
@@ -471,8 +486,14 @@ export default function SettingsScreen() {
               Developed &amp; Powered By
             </Text>
             <View style={styles.partnersRow}>
-              {PARTNERS.map((p) => (
-                <PartnerCard key={p.name} {...p} colors={colors} styles={styles} />
+              {PARTNERS.map(({ logoDark, ...p }) => (
+                <PartnerCard
+                  key={p.name}
+                  {...p}
+                  logo={isDark && logoDark ? logoDark : p.logo}
+                  colors={colors}
+                  styles={styles}
+                />
               ))}
             </View>
           </Card.Content>
