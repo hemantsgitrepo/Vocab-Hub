@@ -100,6 +100,13 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
     }).start();
   };
 
+  /** Reshuffle from a button press — newRound plus tap feedback. The mount
+   *  path calls newRound directly so opening the game stays silent. */
+  const replay = () => {
+    playSfx('tap');
+    newRound();
+  };
+
   useEffect(() => {
     if (!visible) return;
     getMemoryBest().then(setBest);
@@ -237,7 +244,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
                 {best > 0 ? ` · best ${best}` : ''}
               </Text>
             </View>
-            <Pressable onPress={newRound} hitSlop={10} style={styles.headerBtn}>
+            <Pressable onPress={replay} hitSlop={10} style={styles.headerBtn}>
               <RotateCcw size={18} color={C.muted} />
             </Pressable>
           </View>
@@ -377,7 +384,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
                 <Text variant="bodyMedium" style={styles.resultBody}>
                   Every flip strengthens the link between word and meaning.
                 </Text>
-                <Pressable onPress={newRound}>
+                <Pressable onPress={replay}>
                   <LinearGradient
                     colors={[C.mint, '#059669']}
                     start={{ x: 0, y: 0 }}

@@ -148,6 +148,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
   }, [reveal, lockPulse]);
 
   const startGame = () => {
+    playSfx('tap');
     setQuestions(buildMillionaireQuestions(words));
     setQIndex(0);
     setSelected(null);
@@ -226,7 +227,11 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
         if (qIndex === LADDER.length - 1) {
           after(1100, () => finish(true, LADDER[LADDER.length - 1]));
         } else {
-          if (SAFE_HAVENS.includes(qIndex)) setBurst((b) => b + 1); // milestone shower
+          if (SAFE_HAVENS.includes(qIndex)) {
+            // Milestone shower earns its own fanfare on top of the correct chime.
+            setBurst((b) => b + 1);
+            after(320, () => playSfx('fanfare'));
+          }
           after(1100, advance);
         }
       } else {

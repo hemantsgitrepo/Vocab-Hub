@@ -27,7 +27,7 @@ import { AppColors } from '../../theme';
 import { useAppTheme } from '../../ThemeContext';
 import { useAllWords, useGameUnlockStatus } from '../../hooks';
 import { getGameStat, getMemoryBest, getMillionaireBest } from '../../db/settings';
-import { initSfx } from '../../lib/sfx';
+import { initSfx, playSfx } from '../../lib/sfx';
 import { GAMES, GameKey } from '../../lib/games';
 import VocabMillionaire from './VocabMillionaire';
 import MemoryMatch from './MemoryMatch';
@@ -161,6 +161,7 @@ export default function GameArcade() {
   }, [cardAnims, playPulse, shimmer]);
 
   const openTeaser = (key: GameKey) => {
+    playSfx('tap');
     setTeaser(key);
     sheetAnim.setValue(0);
     ringAnim.setValue(0);
@@ -214,7 +215,12 @@ export default function GameArcade() {
               ]}
             >
               {status.unlocked ? (
-                <Pressable onPress={() => setOpenGame(game.key)}>
+                <Pressable
+                  onPress={() => {
+                    playSfx('tap');
+                    setOpenGame(game.key);
+                  }}
+                >
                   {({ pressed }) => (
                     <LinearGradient
                       colors={[gradA, gradB]}
@@ -364,6 +370,7 @@ export default function GameArcade() {
                   </Text>
                   <Pressable
                     onPress={() => {
+                      playSfx('tap');
                       setTeaser(null);
                       navigation.navigate('Add');
                     }}
