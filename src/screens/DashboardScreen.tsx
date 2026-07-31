@@ -10,6 +10,7 @@ import { useAppTheme } from '../ThemeContext';
 import { bestStreak, computeStreak, countMetDays, countToday, dayHistory } from '../lib/streak';
 import { deleteWord } from '../db/words';
 import StreakJourneyModal from './StreakJourneyModal';
+import GameArcade from './games/GameArcade';
 
 const JOURNEY_DAYS = 14;
 
@@ -125,6 +126,8 @@ export default function DashboardScreen() {
             </Card.Content>
           </Card>
         </View>
+
+        <GameArcade />
 
         <Text variant="titleMedium" style={styles.sectionTitle}>
           Recently added

@@ -7,6 +7,7 @@ import { fetchAllWords, setPracticeStatus, wordsFromPastDays } from '../db/words
 import { useQuizAntonyms, useQuizSynonyms } from '../hooks';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
+import GameArcade from './games/GameArcade';
 
 type QuizType = 'flashcards' | 'mcq' | 'fill';
 type Phase = 'setup' | 'active' | 'done';
@@ -213,6 +214,8 @@ export default function QuizScreen() {
             <Button mode="contained" onPress={start} style={styles.startBtn} contentStyle={styles.btnContent}>
               Start quiz
             </Button>
+
+            <GameArcade />
           </>
         )}
 

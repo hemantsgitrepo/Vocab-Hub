@@ -68,6 +68,11 @@ export function observeAllWords() {
   return wordsCollection.query(Q.sortBy('created_at', Q.desc)).observe();
 }
 
+/** Live count of all words — drives game unlock progression. */
+export function observeWordCount() {
+  return wordsCollection.query().observeCount();
+}
+
 /** One-shot fetch of all words, newest first. */
 export function fetchAllWords(): Promise<Word[]> {
   return wordsCollection.query(Q.sortBy('created_at', Q.desc)).fetch();

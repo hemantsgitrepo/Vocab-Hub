@@ -80,6 +80,30 @@ export async function setQuizAntonyms(enabled: boolean): Promise<void> {
   await database.localStorage.set(QUIZ_ANTONYMS_KEY, enabled);
 }
 
+/** Best Vocab Millionaire score, in points. */
+const MILLIONAIRE_BEST_KEY = 'games.millionaire.bestScore';
+
+export async function getMillionaireBest(): Promise<number> {
+  const value = await database.localStorage.get<number>(MILLIONAIRE_BEST_KEY);
+  return value ?? 0;
+}
+
+export async function setMillionaireBest(score: number): Promise<void> {
+  await database.localStorage.set(MILLIONAIRE_BEST_KEY, score);
+}
+
+/** Best Memory Match result, in moves (lower is better; 0 = never played). */
+const MEMORY_BEST_KEY = 'games.memory.bestMoves';
+
+export async function getMemoryBest(): Promise<number> {
+  const value = await database.localStorage.get<number>(MEMORY_BEST_KEY);
+  return value ?? 0;
+}
+
+export async function setMemoryBest(moves: number): Promise<void> {
+  await database.localStorage.set(MEMORY_BEST_KEY, moves);
+}
+
 export const DEFAULT_DARK_MODE = false;
 
 const DARK_MODE_KEY = 'settings.darkMode';

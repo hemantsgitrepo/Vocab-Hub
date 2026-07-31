@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import Word from './db/models/Word';
-import { observeAllWords } from './db/words';
+import { observeAllWords, observeWordCount } from './db/words';
+import { GAMES, GameKey } from './lib/games';
 import {
   DEFAULT_DAILY_GOAL,
   DEFAULT_QUIZ_ANTONYMS,
@@ -26,6 +27,39 @@ export function useAllWords(): Word[] {
     return () => sub.unsubscribe();
   }, []);
   return words;
+}
+
+export interface GameUnlock {
+  unlocked: boolean;
+  /** Words still needed to unlock (0 when unlocked). */
+  remaining: number;
+  /** 0..1 progress toward the unlock threshold. */
+  progress: number;
+  unlockAt: number;
+}
+
+export interface GameUnlockStatus {
+  totalWords: number;
+  games: Record<GameKey, GameUnlock>;
+}
+
+/** Live unlock progression for every game, driven by the total word count. */
+export function useGameUnlockStatus(): GameUnlockStatus {
+  const [totalWords, setTotalWords] = useState(0);
+  useEffect(() => {
+    const sub = observeWordCount().subscribe(setTotalWords);
+    return () => sub.unsubscribe();
+  }, []);
+  const games = {} as Record<GameKey, GameUnlock>;
+  for (const g of GAMES) {
+    games[g.key] = {
+      unlocked: totalWords >= g.unlockAt,
+      remaining: Math.max(g.unlockAt - totalWords, 0),
+      progress: Math.min(totalWords / g.unlockAt, 1),
+      unlockAt: g.unlockAt,
+    };
+  }
+  return { totalWords, games };
 }
 
 /** Daily goal, re-read whenever the screen gains focus so edits in Settings propagate. */
