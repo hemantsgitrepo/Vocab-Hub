@@ -92,6 +92,31 @@ export async function setMillionaireBest(score: number): Promise<void> {
   await database.localStorage.set(MILLIONAIRE_BEST_KEY, score);
 }
 
+/** Generic per-game stat (best score / solved count) for the arcade games. */
+const gameStatKey = (game: string) => `games.stat.${game}`;
+
+export async function getGameStat(game: string): Promise<number> {
+  const value = await database.localStorage.get<number>(gameStatKey(game));
+  return value ?? 0;
+}
+
+export async function setGameStat(game: string, value: number): Promise<void> {
+  await database.localStorage.set(gameStatKey(game), value);
+}
+
+export const DEFAULT_GAME_SOUNDS = true;
+
+const GAME_SOUNDS_KEY = 'settings.gameSounds';
+
+export async function getGameSounds(): Promise<boolean> {
+  const value = await database.localStorage.get<boolean>(GAME_SOUNDS_KEY);
+  return value ?? DEFAULT_GAME_SOUNDS;
+}
+
+export async function setGameSounds(enabled: boolean): Promise<void> {
+  await database.localStorage.set(GAME_SOUNDS_KEY, enabled);
+}
+
 /** Best Memory Match result, in moves (lower is better; 0 = never played). */
 const MEMORY_BEST_KEY = 'games.memory.bestMoves';
 

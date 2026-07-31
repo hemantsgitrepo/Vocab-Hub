@@ -5,19 +5,23 @@ import { observeAllWords, observeWordCount } from './db/words';
 import { GAMES, GameKey } from './lib/games';
 import {
   DEFAULT_DAILY_GOAL,
+  DEFAULT_GAME_SOUNDS,
   DEFAULT_QUIZ_ANTONYMS,
   DEFAULT_QUIZ_SYNONYMS,
   DEFAULT_TRAVEL_FIELDS,
   TravelField,
   getDailyGoal,
+  getGameSounds,
   getQuizAntonyms,
   getQuizSynonyms,
   getTravelFields,
   setDailyGoal,
+  setGameSounds,
   setQuizAntonyms,
   setQuizSynonyms,
   setTravelFields,
 } from './db/settings';
+import { setSfxEnabled } from './lib/sfx';
 
 /** All words, newest first, kept live via WatermelonDB observation. */
 export function useAllWords(): Word[] {
@@ -90,6 +94,22 @@ export function useTravelFields(): [TravelField[], (f: TravelField[]) => void] {
     setTravelFields(next);
   };
   return [fields, update];
+}
+
+/** Whether arcade games play sound effects. */
+export function useGameSounds(): [boolean, (v: boolean) => void] {
+  const [enabled, setEnabled] = useState(DEFAULT_GAME_SOUNDS);
+  useFocusEffect(
+    useCallback(() => {
+      getGameSounds().then(setEnabled);
+    }, [])
+  );
+  const update = (next: boolean) => {
+    setEnabled(next);
+    setGameSounds(next);
+    setSfxEnabled(next); // applies immediately, no restart needed
+  };
+  return [enabled, update];
 }
 
 /** Whether quizzes prompt with a synonym instead of the word itself. */

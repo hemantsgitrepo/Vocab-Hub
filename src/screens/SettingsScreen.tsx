@@ -10,6 +10,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Gamepad2,
   GraduationCap,
   Globe,
   Headphones,
@@ -22,7 +23,13 @@ import {
   Target,
   Upload,
 } from 'lucide-react-native';
-import { useDailyGoal, useQuizAntonyms, useQuizSynonyms, useTravelFields } from '../hooks';
+import {
+  useDailyGoal,
+  useGameSounds,
+  useQuizAntonyms,
+  useQuizSynonyms,
+  useTravelFields,
+} from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { fetchAllWords } from '../db/words';
 import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
@@ -112,6 +119,7 @@ export default function SettingsScreen() {
   // Same stored preferences the Quiz setup screen uses; both re-read on focus.
   const [quizSynonyms, setQuizSynonyms] = useQuizSynonyms();
   const [quizAntonyms, setQuizAntonyms] = useQuizAntonyms();
+  const [gameSounds, setGameSoundsOn] = useGameSounds();
   const [busy, setBusy] = useState<'export' | 'template' | 'import' | null>(null);
   const [snack, setSnack] = useState('');
   const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
@@ -325,6 +333,28 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Switch value={quizAntonyms} onValueChange={setQuizAntonyms} />
+            </View>
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
+              <Gamepad2 size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Game Arcade
+              </Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={styles.quizText}>
+                <Text variant="bodyLarge" style={styles.fieldLabel}>
+                  Sound effects
+                </Text>
+                <Text variant="bodySmall" style={styles.hint}>
+                  Taps, chimes, and fanfares while playing arcade games.
+                </Text>
+              </View>
+              <Switch value={gameSounds} onValueChange={setGameSoundsOn} />
             </View>
           </Card.Content>
         </Card>

@@ -27,6 +27,7 @@ import {
 import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getMillionaireBest, setMillionaireBest } from '../../db/settings';
+import { playSfx } from '../../lib/sfx';
 import {
   LADDER,
   MillionaireQuestion,
@@ -174,6 +175,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
         setNewBest(true);
         setMillionaireBest(score);
       }
+      if (won) playSfx('fanfare');
       Vibration.vibrate(won ? [0, 80, 80, 80, 80, 220] : 120);
     },
     [best, resultAnim]
@@ -206,6 +208,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
     if (reveal !== 'idle' || struck.includes(idx)) return;
     setSelected(idx);
     setReveal('locked');
+    playSfx('tap');
     Vibration.vibrate(18);
 
     after(REVEAL_DELAY, () => {
@@ -213,6 +216,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
       const q = questions[qIndex];
       const correct = idx === q.correctIndex;
       if (correct) {
+        playSfx('success');
         Vibration.vibrate(35);
         Animated.sequence([
           Animated.timing(prizePop, { toValue: 1.25, duration: 140, useNativeDriver: true }),
@@ -225,6 +229,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
           after(1100, advance);
         }
       } else {
+        playSfx('error');
         Vibration.vibrate([0, 60, 60, 140]);
         Animated.sequence([
           Animated.timing(shake, { toValue: 1, duration: 60, useNativeDriver: true }),
@@ -241,6 +246,7 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
     if (used[kind] || reveal !== 'idle') return;
     const q = questions[qIndex];
     setUsed((u) => ({ ...u, [kind]: true }));
+    playSfx('tap');
     Vibration.vibrate(20);
     if (kind === 'fifty') {
       setStruck(fiftyFiftyStrikes(q));

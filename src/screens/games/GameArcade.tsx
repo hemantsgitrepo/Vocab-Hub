@@ -11,21 +11,69 @@ import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Brain, Crown, Gamepad2, Lock, Play, PlusCircle, Trophy } from 'lucide-react-native';
+import {
+  Blocks,
+  Brain,
+  Crown,
+  Gamepad2,
+  Hexagon,
+  Lock,
+  Play,
+  PlusCircle,
+  Puzzle,
+  Trophy,
+} from 'lucide-react-native';
 import { AppColors } from '../../theme';
 import { useAppTheme } from '../../ThemeContext';
 import { useAllWords, useGameUnlockStatus } from '../../hooks';
-import { getMemoryBest, getMillionaireBest } from '../../db/settings';
+import { getGameStat, getMemoryBest, getMillionaireBest } from '../../db/settings';
+import { initSfx } from '../../lib/sfx';
 import { GAMES, GameKey } from '../../lib/games';
 import VocabMillionaire from './VocabMillionaire';
 import MemoryMatch from './MemoryMatch';
+import ScrabbleGame from './ScrabbleGame';
+import CrosswordGame from './CrosswordGame';
+import SpellingBeeGame from './SpellingBeeGame';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const CARD_GRADIENTS: Record<GameKey, [string, string]> = {
   millionaire: ['#7C3AED', '#DB2777'],
   memory: ['#059669', '#0D9488'],
+  scrabble: ['#D97706', '#B45309'],
+  crossword: ['#2563EB', '#4F46E5'],
+  bee: ['#EAB308', '#CA8A04'],
 };
+
+const CARD_ICONS: Record<GameKey, typeof Crown> = {
+  millionaire: Crown,
+  memory: Brain,
+  scrabble: Blocks,
+  crossword: Puzzle,
+  bee: Hexagon,
+};
+
+const ZERO_BESTS: Record<GameKey, number> = {
+  millionaire: 0,
+  memory: 0,
+  scrabble: 0,
+  crossword: 0,
+  bee: 0,
+};
+
+function bestLabelFor(key: GameKey, value: number): string {
+  if (value <= 0) return 'No score yet';
+  switch (key) {
+    case 'millionaire':
+      return `Best ${value.toLocaleString('en-US')} pts`;
+    case 'memory':
+      return `Best ${value} moves`;
+    case 'crossword':
+      return `Solved ×${value}`;
+    default:
+      return `Best ${value} pts`;
+  }
+}
 
 const RING_R = 44;
 const RING_LEN = 2 * Math.PI * RING_R;
@@ -42,14 +90,25 @@ export default function GameArcade() {
 
   const [openGame, setOpenGame] = useState<GameKey | null>(null);
   const [teaser, setTeaser] = useState<GameKey | null>(null);
-  const [bests, setBests] = useState<Record<GameKey, number>>({ millionaire: 0, memory: 0 });
+  const [bests, setBests] = useState<Record<GameKey, number>>(ZERO_BESTS);
 
   const refreshBests = useCallback(() => {
-    Promise.all([getMillionaireBest(), getMemoryBest()]).then(([m, mem]) =>
-      setBests({ millionaire: m, memory: mem })
+    Promise.all([
+      getMillionaireBest(),
+      getMemoryBest(),
+      getGameStat('scrabble'),
+      getGameStat('crossword'),
+      getGameStat('bee'),
+    ]).then(([millionaire, memory, scrabble, crossword, bee]) =>
+      setBests({ millionaire, memory, scrabble, crossword, bee })
     );
   }, []);
   useFocusEffect(refreshBests);
+
+  // Warm up audio players + the user's sound preference before first play.
+  useEffect(() => {
+    initSfx().catch(() => {});
+  }, []);
 
   // ----- Animations -----
   const cardAnims = useMemo(() => GAMES.map(() => new Animated.Value(0)), []);
@@ -133,16 +192,8 @@ export default function GameArcade() {
         {GAMES.map((game, i) => {
           const status = games[game.key];
           const [gradA, gradB] = CARD_GRADIENTS[game.key];
-          const Icon = game.key === 'millionaire' ? Crown : Brain;
-          const bestValue = bests[game.key];
-          const bestLabel =
-            game.key === 'millionaire'
-              ? bestValue > 0
-                ? `Best ${bestValue.toLocaleString('en-US')} pts`
-                : 'No score yet'
-              : bestValue > 0
-                ? `Best ${bestValue} moves`
-                : 'No score yet';
+          const Icon = CARD_ICONS[game.key];
+          const bestLabel = bestLabelFor(game.key, bests[game.key]);
 
           return (
             <Animated.View
@@ -358,6 +409,30 @@ export default function GameArcade() {
         }}
         words={words}
       />
+      <ScrabbleGame
+        visible={openGame === 'scrabble'}
+        onClose={() => {
+          setOpenGame(null);
+          refreshBests();
+        }}
+        words={words}
+      />
+      <CrosswordGame
+        visible={openGame === 'crossword'}
+        onClose={() => {
+          setOpenGame(null);
+          refreshBests();
+        }}
+        words={words}
+      />
+      <SpellingBeeGame
+        visible={openGame === 'bee'}
+        onClose={() => {
+          setOpenGame(null);
+          refreshBests();
+        }}
+        words={words}
+      />
     </View>
   );
 }
@@ -372,8 +447,8 @@ const makeStyles = (colors: AppColors) =>
       marginBottom: 8,
     },
     sectionTitle: { color: colors.text, fontWeight: '600' },
-    cardsRow: { flexDirection: 'row', gap: 12 },
-    cardWrap: { flex: 1 },
+    cardsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    cardWrap: { flexBasis: '47%', flexGrow: 1 },
     card: {
       borderRadius: 18,
       padding: 14,

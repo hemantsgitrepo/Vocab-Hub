@@ -16,6 +16,7 @@ import { Brain, RotateCcw, Sparkles, Trophy, X } from 'lucide-react-native';
 import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getMemoryBest, setMemoryBest } from '../../db/settings';
+import { playSfx } from '../../lib/sfx';
 import { MEMORY_PAIRS, MemoryCard, buildMemoryDeck } from '../../lib/games';
 
 // Deep-forest arcade palette, independent of the app theme.
@@ -139,6 +140,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
     if (busy.current || won) return;
     if (faceUp.includes(card.id) || matched.has(card.pairId)) return;
 
+    playSfx('tap');
     Vibration.vibrate(12);
     flipTo(card.id, true).start();
 
@@ -157,6 +159,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
     if (first.pairId === card.pairId) {
       timers.current.push(
         setTimeout(() => {
+          playSfx('success');
           Vibration.vibrate(30);
           const nextMatched = new Set(matched).add(card.pairId);
           setMatched(nextMatched);
@@ -167,6 +170,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
           if (nextMatched.size === MEMORY_PAIRS) {
             const finalMoves = moves + 1;
             setWon(true);
+            playSfx('fanfare');
             Vibration.vibrate([0, 70, 70, 70, 70, 200]);
             resultAnim.setValue(0);
             Animated.spring(resultAnim, {
@@ -186,6 +190,7 @@ export default function MemoryMatch({ visible, onClose, words }: Props) {
     } else {
       timers.current.push(
         setTimeout(() => {
+          playSfx('error');
           Vibration.vibrate([0, 40, 50, 40]);
           wobble(firstId, card.id);
         }, FLIP_MS + 40)
