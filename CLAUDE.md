@@ -15,12 +15,15 @@
    - Exactly 2 Synonyms, Exactly 2 Antonyms
    - Contextual Example Sentence
    - Layman's Terms Explanation (Optional string)
+   - Word Origin (Optional string)
    - Part of Speech, Word Forms (grammatical variants)
    - Created At (timestamp), Difficulty Level, Practice Status
 3. **Audio / Travel Mode:** Continuous back-to-back playback of words + meanings with pause intervals, TTS pitch/speed control, and background audio readiness.
 4. **Testing Engine:** Dynamic quizzes (Flashcards, Multiple Choice, Fill-in-the-Blanks) based on user's learned vocabulary pool.
+5. **Word Management:** Delete-word with confirmation warning; CSV import/export (bulk add/backup) matched by header name, with a downloadable template.
 
 ## Code Standards
 - Use TypeScript for strict type checking.
 - Keep UI modern, vibrant, and clean with intuitive animations. Give Claude design freedom for layout, themes, and micro-interactions.
 - Do not use paid APIs or third-party paid services.
+- App display name is "Vocab Hub" (rebranded from "AptitudeWords"), but the native package/bundle ID (`com.anonymous.AptitudeWords`) and `app.json`'s `slug` (`AptitudeWords`) are intentionally unchanged, to avoid breaking the native project identity. Do not "fix" this mismatch.

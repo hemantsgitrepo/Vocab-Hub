@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
@@ -7,13 +7,17 @@ import { BookOpen, Flame, Trash, Trophy } from 'lucide-react-native';
 import { useAllWords, useDailyGoal } from '../hooks';
 import { AppColors, difficultyColor } from '../theme';
 import { useAppTheme } from '../ThemeContext';
-import { computeStreak, countToday } from '../lib/streak';
+import { bestStreak, computeStreak, countMetDays, countToday, dayHistory } from '../lib/streak';
 import { deleteWord } from '../db/words';
+import StreakJourneyModal from './StreakJourneyModal';
+
+const JOURNEY_DAYS = 14;
 
 export default function DashboardScreen() {
   const { colors } = useAppTheme();
   const words = useAllWords();
   const [goal] = useDailyGoal();
+  const [journeyOpen, setJourneyOpen] = useState(false);
 
   const dates = words.map((w) => w.createdAt);
   const today = countToday(dates);
@@ -77,7 +81,12 @@ export default function DashboardScreen() {
                 style={styles.progress}
               />
             </View>
-            <View style={styles.streakBadge}>
+            <Pressable
+              onPress={() => setJourneyOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="View your streak journey"
+              style={({ pressed }) => [styles.streakBadge, pressed && styles.streakBadgePressed]}
+            >
               <Flame size={28} color={colors.amber} fill={colors.amber} />
               <Text variant="titleLarge" style={styles.streakNum}>
                 {streak}
@@ -85,7 +94,10 @@ export default function DashboardScreen() {
               <Text variant="labelSmall" style={styles.streakLabel}>
                 day streak
               </Text>
-            </View>
+              <Text variant="labelSmall" style={styles.streakHint}>
+                tap for journey
+              </Text>
+            </Pressable>
           </View>
         </LinearGradient>
 
@@ -172,6 +184,17 @@ export default function DashboardScreen() {
           ))
         )}
       </ScrollView>
+
+      <StreakJourneyModal
+        visible={journeyOpen}
+        onClose={() => setJourneyOpen(false)}
+        history={dayHistory(dates, goal, JOURNEY_DAYS)}
+        streak={streak}
+        best={bestStreak(dates, goal)}
+        metDays={countMetDays(dates, goal)}
+        totalWords={words.length}
+        goal={goal}
+      />
     </SafeAreaView>
   );
 }
@@ -197,8 +220,10 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
     paddingHorizontal: 16,
     marginLeft: 16,
   },
+  streakBadgePressed: { backgroundColor: '#FFFFFF33', transform: [{ scale: 0.96 }] },
   streakNum: { color: '#FFFFFF', fontWeight: '700' },
   streakLabel: { color: '#E0E7FF' },
+  streakHint: { color: '#FFFFFF99', marginTop: 2, fontSize: 9 },
   statsRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   statCard: { flex: 1, backgroundColor: colors.surface },
   statContent: { alignItems: 'center', gap: 2 },

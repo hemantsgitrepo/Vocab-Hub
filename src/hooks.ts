@@ -4,13 +4,16 @@ import Word from './db/models/Word';
 import { observeAllWords } from './db/words';
 import {
   DEFAULT_DAILY_GOAL,
+  DEFAULT_QUIZ_ANTONYMS,
   DEFAULT_QUIZ_SYNONYMS,
   DEFAULT_TRAVEL_FIELDS,
   TravelField,
   getDailyGoal,
+  getQuizAntonyms,
   getQuizSynonyms,
   getTravelFields,
   setDailyGoal,
+  setQuizAntonyms,
   setQuizSynonyms,
   setTravelFields,
 } from './db/settings';
@@ -66,6 +69,21 @@ export function useQuizSynonyms(): [boolean, (v: boolean) => void] {
   const update = (next: boolean) => {
     setEnabled(next);
     setQuizSynonyms(next);
+  };
+  return [enabled, update];
+}
+
+/** Whether quizzes prompt with an antonym instead of the word itself. */
+export function useQuizAntonyms(): [boolean, (v: boolean) => void] {
+  const [enabled, setEnabled] = useState(DEFAULT_QUIZ_ANTONYMS);
+  useFocusEffect(
+    useCallback(() => {
+      getQuizAntonyms().then(setEnabled);
+    }, [])
+  );
+  const update = (next: boolean) => {
+    setEnabled(next);
+    setQuizAntonyms(next);
   };
   return [enabled, update];
 }

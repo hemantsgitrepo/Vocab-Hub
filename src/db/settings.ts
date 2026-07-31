@@ -67,6 +67,19 @@ export async function setQuizSynonyms(enabled: boolean): Promise<void> {
   await database.localStorage.set(QUIZ_SYNONYMS_KEY, enabled);
 }
 
+export const DEFAULT_QUIZ_ANTONYMS = false;
+
+const QUIZ_ANTONYMS_KEY = 'settings.quizUseAntonyms';
+
+export async function getQuizAntonyms(): Promise<boolean> {
+  const value = await database.localStorage.get<boolean>(QUIZ_ANTONYMS_KEY);
+  return value ?? DEFAULT_QUIZ_ANTONYMS;
+}
+
+export async function setQuizAntonyms(enabled: boolean): Promise<void> {
+  await database.localStorage.set(QUIZ_ANTONYMS_KEY, enabled);
+}
+
 export const DEFAULT_DARK_MODE = false;
 
 const DARK_MODE_KEY = 'settings.darkMode';

@@ -4,18 +4,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, SegmentedButtons, Text } from 'react-native-paper';
 import Word, { PracticeStatus } from '../db/models/Word';
 import { fetchAllWords, setPracticeStatus, wordsFromPastDays } from '../db/words';
-import { useQuizSynonyms } from '../hooks';
+import { useQuizAntonyms, useQuizSynonyms } from '../hooks';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 
 type QuizType = 'flashcards' | 'mcq' | 'fill';
 type Phase = 'setup' | 'active' | 'done';
 
+/** What the prompt is showing in place of the word itself, if anything. */
+type PromptKind = 'word' | 'synonym' | 'antonym';
+
 interface Question {
   word: Word;
   prompt: string;
-  /** True when the prompt shows a synonym rather than the word itself. */
-  promptIsSynonym: boolean;
+  promptKind: PromptKind;
   options: string[]; // empty for flashcards
   correctIndex: number;
 }
@@ -35,16 +37,30 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function buildQuestions(words: Word[], type: QuizType, useSynonyms: boolean): Question[] {
+function buildQuestions(
+  words: Word[],
+  type: QuizType,
+  useSynonyms: boolean,
+  useAntonyms: boolean
+): Question[] {
   const pool = shuffle(words).slice(0, MAX_QUESTIONS);
   return pool.map((word) => {
-    // Only swap in a synonym where one exists; otherwise fall back to the word.
-    const synonym = useSynonyms ? shuffle(word.synonyms)[0] : undefined;
-    const promptIsSynonym = Boolean(synonym);
-    const headword = synonym ?? word.word;
+    // Pick one enabled hint type at random per question; fall back to the word
+    // itself when neither is enabled or the word has none available.
+    const kinds: PromptKind[] = [];
+    if (useSynonyms && word.synonyms.length) kinds.push('synonym');
+    if (useAntonyms && word.antonyms.length) kinds.push('antonym');
+    const promptKind: PromptKind = kinds.length ? shuffle(kinds)[0] : 'word';
+    const hint =
+      promptKind === 'synonym'
+        ? shuffle(word.synonyms)[0]
+        : promptKind === 'antonym'
+          ? shuffle(word.antonyms)[0]
+          : undefined;
+    const headword = hint ?? word.word;
 
     if (type === 'flashcards') {
-      return { word, prompt: headword, promptIsSynonym, options: [], correctIndex: 0 };
+      return { word, prompt: headword, promptKind, options: [], correctIndex: 0 };
     }
     const distractors = shuffle(words.filter((w) => w.id !== word.id)).slice(0, 3);
     if (type === 'mcq') {
@@ -52,14 +68,14 @@ function buildQuestions(words: Word[], type: QuizType, useSynonyms: boolean): Qu
       return {
         word,
         prompt: headword,
-        promptIsSynonym,
+        promptKind,
         options,
         correctIndex: options.indexOf(word.meaning),
       };
     }
     // fill-in-the-blank: blank the word out of its own example sentence.
-    // The prompt is the sentence, so there's no headword to swap — a synonym
-    // is offered as a hint instead.
+    // The prompt is the sentence, so there's no headword to swap — a hint
+    // is offered instead.
     const blanked = word.exampleSentence.replace(
       new RegExp(`\\b${escapeRegExp(word.word)}\\b`, 'gi'),
       '_____'
@@ -67,12 +83,14 @@ function buildQuestions(words: Word[], type: QuizType, useSynonyms: boolean): Qu
     const sentence = blanked.includes('_____')
       ? blanked
       : `${word.exampleSentence}\n\nWhich word fits this sentence?`;
-    const prompt = synonym ? `${sentence}\n\nHint — similar to: ${synonym}` : sentence;
+    const prompt = hint
+      ? `${sentence}\n\nHint — ${promptKind === 'antonym' ? 'opposite of' : 'similar to'}: ${hint}`
+      : sentence;
     const options = shuffle([word.word, ...distractors.map((d) => d.word)]);
     return {
       word,
       prompt,
-      promptIsSynonym: false,
+      promptKind: 'word',
       options,
       correctIndex: options.indexOf(word.word),
     };
@@ -93,8 +111,9 @@ export default function QuizScreen() {
   const [phase, setPhase] = useState<Phase>('setup');
   const [type, setType] = useState<QuizType>('flashcards');
   const [source, setSource] = useState('all');
-  // Read-only here — the toggle itself lives in Settings.
+  // Read-only here — the toggles themselves live in Settings.
   const [useSynonyms] = useQuizSynonyms();
+  const [useAntonyms] = useQuizAntonyms();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [qIndex, setQIndex] = useState(0);
   const [score, setScore] = useState(0);
@@ -115,7 +134,7 @@ export default function QuizScreen() {
       );
       return;
     }
-    setQuestions(buildQuestions(words, type, useSynonyms));
+    setQuestions(buildQuestions(words, type, useSynonyms, useAntonyms));
     setQIndex(0);
     setScore(0);
     setAnswered(null);
@@ -210,7 +229,7 @@ export default function QuizScreen() {
                     <Card.Content style={styles.flashcardContent}>
                       {revealed ? (
                         <>
-                          {q.promptIsSynonym && (
+                          {q.promptKind !== 'word' && (
                             <Text variant="headlineSmall" style={styles.revealWord}>
                               {q.word.word}
                             </Text>
@@ -223,6 +242,11 @@ export default function QuizScreen() {
                               Similar: {q.word.synonyms.join(', ')}
                             </Text>
                           )}
+                          {q.word.antonyms.length > 0 && (
+                            <Text variant="bodyMedium" style={styles.flashHint}>
+                              Opposite: {q.word.antonyms.join(', ')}
+                            </Text>
+                          )}
                           {!!q.word.laymanExplanation && (
                             <Text variant="bodyMedium" style={styles.flashHint}>
                               In plain terms: {q.word.laymanExplanation}
@@ -231,21 +255,21 @@ export default function QuizScreen() {
                         </>
                       ) : (
                         <>
-                          {q.promptIsSynonym && (
-                            <Text variant="labelMedium" style={styles.synonymBadge}>
-                              SYNONYM OF
+                          {q.promptKind !== 'word' && (
+                            <Text variant="labelMedium" style={styles.kindBadge}>
+                              {q.promptKind === 'antonym' ? 'ANTONYM OF' : 'SYNONYM OF'}
                             </Text>
                           )}
                           <Text variant="displaySmall" style={styles.flashWord}>
                             {q.prompt}
                           </Text>
-                          {!q.promptIsSynonym && !!q.word.pronunciation && (
+                          {q.promptKind === 'word' && !!q.word.pronunciation && (
                             <Text variant="bodyLarge" style={styles.flashHint}>
                               {q.word.pronunciation}
                             </Text>
                           )}
                           <Text variant="labelMedium" style={styles.tapHint}>
-                            {q.promptIsSynonym
+                            {q.promptKind !== 'word'
                               ? 'Tap to reveal the word'
                               : 'Tap to reveal meaning'}
                           </Text>
@@ -279,9 +303,9 @@ export default function QuizScreen() {
               <>
                 <Card style={styles.questionCard}>
                   <Card.Content>
-                    {q.promptIsSynonym && (
-                      <Text variant="labelMedium" style={styles.synonymBadge}>
-                        SYNONYM OF
+                    {q.promptKind !== 'word' && (
+                      <Text variant="labelMedium" style={styles.kindBadge}>
+                        {q.promptKind === 'antonym' ? 'ANTONYM OF' : 'SYNONYM OF'}
                       </Text>
                     )}
                     <Text
@@ -367,7 +391,7 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   flashWord: { color: colors.text, fontWeight: '700', textAlign: 'center' },
   flashBack: { color: colors.text, textAlign: 'center', lineHeight: 28 },
   flashHint: { color: colors.muted, textAlign: 'center' },
-  synonymBadge: {
+  kindBadge: {
     color: colors.violet,
     textAlign: 'center',
     letterSpacing: 1,

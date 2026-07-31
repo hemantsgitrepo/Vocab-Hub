@@ -22,7 +22,7 @@ import {
   Target,
   Upload,
 } from 'lucide-react-native';
-import { useDailyGoal, useQuizSynonyms, useTravelFields } from '../hooks';
+import { useDailyGoal, useQuizAntonyms, useQuizSynonyms, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { fetchAllWords } from '../db/words';
 import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
@@ -109,8 +109,9 @@ export default function SettingsScreen() {
   const { colors, isDark, setDark } = useAppTheme();
   const [goal, setGoal] = useDailyGoal();
   const [travelFields, setTravelFields] = useTravelFields();
-  // Same stored preference the Quiz setup screen uses; both re-read on focus.
+  // Same stored preferences the Quiz setup screen uses; both re-read on focus.
   const [quizSynonyms, setQuizSynonyms] = useQuizSynonyms();
+  const [quizAntonyms, setQuizAntonyms] = useQuizAntonyms();
   const [busy, setBusy] = useState<'export' | 'template' | 'import' | null>(null);
   const [snack, setSnack] = useState('');
   const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
@@ -311,6 +312,19 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Switch value={quizSynonyms} onValueChange={setQuizSynonyms} />
+            </View>
+            <Divider />
+            <View style={styles.fieldRow}>
+              <View style={styles.quizText}>
+                <Text variant="bodyLarge" style={styles.fieldLabel}>
+                  Ask with antonyms
+                </Text>
+                <Text variant="bodySmall" style={styles.hint}>
+                  Shows an antonym instead of the word, so you recall it from
+                  its opposite.
+                </Text>
+              </View>
+              <Switch value={quizAntonyms} onValueChange={setQuizAntonyms} />
             </View>
           </Card.Content>
         </Card>
