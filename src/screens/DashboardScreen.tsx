@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,11 +11,13 @@ import { bestStreak, computeStreak, countMetDays, countToday, dayHistory } from 
 import { deleteWord } from '../db/words';
 import StreakJourneyModal from './StreakJourneyModal';
 import GameArcade from './games/GameArcade';
+import { useAppDialogs } from '../ui/AppDialogs';
 
 const JOURNEY_DAYS = 14;
 
 export default function DashboardScreen() {
   const { colors } = useAppTheme();
+  const dialogs = useAppDialogs();
   const words = useAllWords();
   const [goal] = useDailyGoal();
   const [journeyOpen, setJourneyOpen] = useState(false);
@@ -27,19 +29,18 @@ export default function DashboardScreen() {
   const progress = goal > 0 ? Math.min(today / goal, 1) : 0;
   const recent = words.slice(0, 5);
 
-  const confirmDelete = (word: typeof words[0]) => {
-    Alert.alert(
-      'Delete this word?',
-      `"${word.word}" cannot be recovered once deleted.`,
-      [
-        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
-        {
-          text: 'Delete',
-          onPress: () => deleteWord(word).catch(() => {}),
-          style: 'destructive',
-        },
-      ]
-    );
+  const confirmDelete = async (word: typeof words[0]) => {
+    const ok = await dialogs.confirm({
+      title: 'Delete this word?',
+      message: `"${word.word}" cannot be recovered once deleted.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep it',
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteWord(word)
+      .then(() => dialogs.toast(`"${word.word}" deleted.`, { kind: 'info' }))
+      .catch(() => dialogs.toast("Couldn't delete that word.", { kind: 'error' }));
   };
 
   const styles = useMemo(() => makeStyles(colors), [colors]);

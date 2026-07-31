@@ -17,9 +17,11 @@ import {
   Info,
   Minus,
   Moon,
+  MonitorSmartphone,
   Plus,
   ShieldCheck,
   Sparkles,
+  Sun,
   Target,
   Upload,
 } from 'lucide-react-native';
@@ -30,7 +32,7 @@ import {
   useQuizSynonyms,
   useTravelFields,
 } from '../hooks';
-import { TRAVEL_FIELDS, TravelField } from '../db/settings';
+import { TRAVEL_FIELDS, ThemeMode, TravelField } from '../db/settings';
 import { fetchAllWords } from '../db/words';
 import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
 import { AppColors } from '../theme';
@@ -112,8 +114,14 @@ function PartnerCard({
   );
 }
 
+const THEME_OPTIONS: { key: ThemeMode; label: string; Icon: typeof Sun }[] = [
+  { key: 'light', label: 'Light', Icon: Sun },
+  { key: 'dark', label: 'Dark', Icon: Moon },
+  { key: 'system', label: 'Auto', Icon: MonitorSmartphone },
+];
+
 export default function SettingsScreen() {
-  const { colors, isDark, setDark } = useAppTheme();
+  const { colors, mode, setMode } = useAppTheme();
   const [goal, setGoal] = useDailyGoal();
   const [travelFields, setTravelFields] = useTravelFields();
   // Same stored preferences the Quiz setup screen uses; both re-read on focus.
@@ -219,16 +227,28 @@ export default function SettingsScreen() {
                 Appearance
               </Text>
             </View>
-            <View style={styles.fieldRow}>
-              <View style={styles.quizText}>
-                <Text variant="bodyLarge" style={styles.fieldLabel}>
-                  Dark mode
-                </Text>
-                <Text variant="bodySmall" style={styles.hint}>
-                  Switch the app to a dark theme.
-                </Text>
-              </View>
-              <Switch value={isDark} onValueChange={setDark} />
+            <Text variant="bodyMedium" style={styles.hint}>
+              Pick a theme, or let Auto follow your device setting.
+            </Text>
+            <View style={styles.themeRow}>
+              {THEME_OPTIONS.map(({ key, label, Icon }) => {
+                const active = mode === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setMode(key)}
+                    style={[styles.themeOption, active && styles.themeOptionActive]}
+                  >
+                    <Icon size={20} color={active ? colors.primary : colors.muted} />
+                    <Text
+                      variant="labelLarge"
+                      style={[styles.themeLabel, active && styles.themeLabelActive]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </Card.Content>
         </Card>
@@ -531,6 +551,23 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
   },
+  themeRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  themeOption: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  themeOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '14',
+  },
+  themeLabel: { color: colors.muted, fontWeight: '700' },
+  themeLabelActive: { color: colors.primary },
   fieldLabel: { color: colors.text },
   quizText: { flex: 1, paddingRight: 12 },
   warning: { color: colors.red, marginTop: 8 },

@@ -5,6 +5,10 @@ export interface AppColors {
   primary: string;
   primaryDark: string;
   violet: string;
+  /** Soft sage green — calm accents, success states. */
+  sage: string;
+  /** Pale coral — warm accents, gentle warnings. */
+  coral: string;
   background: string;
   surface: string;
   surfaceAlt: string;
@@ -16,43 +20,52 @@ export interface AppColors {
   border: string;
 }
 
-// Difficulty/status accents stay the same in both themes.
-const amber = '#F59E0B';
-const green = '#10B981';
-const red = '#EF4444';
+// ---------------------------------------------------------------------------
+// Sophisticated pastel palette.
+// Light: cream paper, muted lavender ink, sage/coral accents.
+// Dark: deep charcoal-slate (never pure black) with pastel glows.
+// Text/primary pairs hold WCAG AA contrast for daily reading.
+// ---------------------------------------------------------------------------
 
 export const lightColors: AppColors = {
-  primary: '#4338CA',
-  primaryDark: '#312E81',
-  violet: '#7C3AED',
-  background: '#FAF6EF',
+  primary: '#5D54B4', // deep muted lavender — 4.9:1 on white
+  primaryDark: '#453E8C',
+  violet: '#8B7ED4', // warm lavender accent
+  sage: '#5E9C7C',
+  coral: '#E08A72',
+  background: '#FAF7F1', // warm cream
   surface: '#FFFFFF',
-  surfaceAlt: '#F1EDE3',
-  text: '#1E1B4B',
-  muted: '#6B7280',
-  amber,
-  green,
-  red,
-  border: '#E7E2D8',
+  surfaceAlt: '#F0EBE1',
+  text: '#2B2840', // slate ink
+  muted: '#6E6A80', // muted slate
+  amber: '#DFA23F',
+  green: '#4E9B6F', // sage-leaning success
+  red: '#D96B57', // coral-leaning destructive
+  border: '#E7E1D5',
 };
 
-// Lifted from Jobmanch.ai's dark theme: surface-950/850/800, trust-500, ai-500.
 export const darkColors: AppColors = {
-  primary: '#6366F1',
-  primaryDark: '#4338CA',
-  violet: '#06B6D4',
-  background: '#070A12',
-  surface: '#0F1422',
-  surfaceAlt: '#151B2B',
-  text: '#F1F5F9',
-  muted: '#9CA0AC',
-  amber,
-  green,
-  red,
-  border: '#222A3D',
+  primary: '#9C93EC', // pastel lavender glow — reads on charcoal
+  primaryDark: '#7A6FD0',
+  violet: '#8FD0C0', // soft mint-sage glow
+  sage: '#8CC9A6',
+  coral: '#E8A18E',
+  background: '#14161D', // deep charcoal slate
+  surface: '#1C1F2A',
+  surfaceAlt: '#252938',
+  text: '#EDECF4',
+  muted: '#9B99AB',
+  amber: '#E5BB6E',
+  green: '#82C9A0',
+  red: '#E28E7E',
+  border: '#2E3245',
 };
 
-export const difficultyColor: Record<string, string> = { easy: green, medium: amber, hard: red };
+export const difficultyColor: Record<string, string> = {
+  easy: '#4E9B6F',
+  medium: '#DFA23F',
+  hard: '#D96B57',
+};
 
 export function paperThemeFor(colors: AppColors, dark: boolean) {
   const base = dark ? MD3DarkTheme : MD3LightTheme;

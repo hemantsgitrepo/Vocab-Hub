@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Easing,
   Modal,
@@ -28,6 +27,7 @@ import Word from '../../db/models/Word';
 import Confetti from './Confetti';
 import { getMillionaireBest, setMillionaireBest } from '../../db/settings';
 import { playSfx } from '../../lib/sfx';
+import { useAppDialogs } from '../../ui/AppDialogs';
 import {
   LADDER,
   MillionaireQuestion,
@@ -70,6 +70,7 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 
 export default function VocabMillionaire({ visible, onClose, words }: Props) {
   const { width } = useWindowDimensions();
+  const dialogs = useAppDialogs();
 
   const [phase, setPhase] = useState<Phase>('intro');
   const [questions, setQuestions] = useState<MillionaireQuestion[]>([]);
@@ -266,15 +267,19 @@ export default function VocabMillionaire({ visible, onClose, words }: Props) {
     Animated.spring(bannerAnim, { toValue: 1, friction: 7, useNativeDriver: true }).start();
   };
 
-  const confirmQuit = () => {
+  const confirmQuit = async () => {
     if (phase !== 'playing') {
       onClose();
       return;
     }
-    Alert.alert('Leave the hot seat?', 'Your progress in this game will be lost.', [
-      { text: 'Keep playing', style: 'cancel' },
-      { text: 'Leave', style: 'destructive', onPress: onClose },
-    ]);
+    const ok = await dialogs.confirm({
+      title: 'Leave the hot seat?',
+      message: 'Your progress in this game will be lost.',
+      confirmLabel: 'Leave',
+      cancelLabel: 'Keep playing',
+      destructive: true,
+    });
+    if (ok) onClose();
   };
 
   const q = questions[qIndex];

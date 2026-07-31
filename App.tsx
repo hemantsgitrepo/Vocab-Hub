@@ -6,6 +6,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GraduationCap, Headphones, Home, PlusCircle, Settings } from 'lucide-react-native';
 import { ThemeProvider, useAppTheme } from './src/ThemeContext';
+import { DialogProvider } from './src/ui/AppDialogs';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddWordScreen from './src/screens/AddWordScreen';
 import TravelModeScreen from './src/screens/TravelModeScreen';
@@ -21,19 +22,26 @@ function AppShell() {
     <PaperProvider theme={paperTheme}>
       <NavigationContainer theme={navTheme}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
+        <DialogProvider>
         <Tab.Navigator
           screenOptions={{
             headerShown: false,
+            animation: 'fade',
             tabBarActiveTintColor: colors.primary,
             tabBarInactiveTintColor: colors.muted,
             tabBarHideOnKeyboard: true,
             // No fixed height — bottom-tabs adds the safe-area inset itself.
             tabBarStyle: {
               backgroundColor: colors.surface,
-              borderTopColor: colors.border,
-              paddingTop: 6,
+              borderTopWidth: 0,
+              paddingTop: 8,
+              elevation: 16,
+              shadowColor: '#000000',
+              shadowOpacity: 0.12,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: -4 },
             },
-            tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+            tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
           }}
         >
           <Tab.Screen
@@ -72,6 +80,7 @@ function AppShell() {
             }}
           />
         </Tab.Navigator>
+        </DialogProvider>
       </NavigationContainer>
     </PaperProvider>
   );

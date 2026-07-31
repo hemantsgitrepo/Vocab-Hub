@@ -129,15 +129,23 @@ export async function setMemoryBest(moves: number): Promise<void> {
   await database.localStorage.set(MEMORY_BEST_KEY, moves);
 }
 
-export const DEFAULT_DARK_MODE = false;
+export type ThemeMode = 'light' | 'dark' | 'system';
 
-const DARK_MODE_KEY = 'settings.darkMode';
+export const DEFAULT_THEME_MODE: ThemeMode = 'system';
 
-export async function getDarkMode(): Promise<boolean> {
-  const value = await database.localStorage.get<boolean>(DARK_MODE_KEY);
-  return value ?? DEFAULT_DARK_MODE;
+const THEME_MODE_KEY = 'settings.themeMode';
+const LEGACY_DARK_MODE_KEY = 'settings.darkMode';
+
+export async function getThemeMode(): Promise<ThemeMode> {
+  const value = await database.localStorage.get<string>(THEME_MODE_KEY);
+  if (value === 'light' || value === 'dark' || value === 'system') return value;
+  // Migrate the old boolean toggle: an explicit true/false keeps its choice.
+  const legacy = await database.localStorage.get<boolean>(LEGACY_DARK_MODE_KEY);
+  if (legacy === true) return 'dark';
+  if (legacy === false) return 'light';
+  return DEFAULT_THEME_MODE;
 }
 
-export async function setDarkMode(enabled: boolean): Promise<void> {
-  await database.localStorage.set(DARK_MODE_KEY, enabled);
+export async function setThemeMode(mode: ThemeMode): Promise<void> {
+  await database.localStorage.set(THEME_MODE_KEY, mode);
 }
