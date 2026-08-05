@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import Word from './db/models/Word';
 import { observeAllWords, observeWordCount } from './db/words';
@@ -13,6 +13,8 @@ import {
   getDailyGoal,
   getGameSounds,
   getOnboardingComplete,
+  getStreakStateRaw,
+  setStreakStateRaw,
   getQuizAntonyms,
   getQuizSynonyms,
   getTravelFields,
@@ -24,6 +26,17 @@ import {
   setTravelFields,
 } from './db/settings';
 import { setSfxEnabled } from './lib/sfx';
+import {
+  FREEZE_EVERY,
+  STREAK_STATE_VERSION,
+  StreakState,
+  StreakView,
+  countsByDay,
+  initialState,
+  pendingMilestone,
+  project,
+  reconcile,
+} from './lib/streakEngine';
 
 /** All words, newest first, kept live via WatermelonDB observation. */
 export function useAllWords(): Word[] {
@@ -66,6 +79,120 @@ export function useGameUnlockStatus(): GameUnlockStatus {
     };
   }
   return { totalWords, games };
+}
+
+/**
+ * The forgiving streak system: settles elapsed days, spends freezes on misses,
+ * runs repair challenges and surfaces milestones.
+ *
+ * Day completion is derived from word timestamps every time, so the streak can
+ * never drift from the collection; only the non-derivable overlay is persisted.
+ */
+export interface StreakManager {
+  /** False until the stored overlay has loaded — don't render numbers yet. */
+  ready: boolean;
+  view: StreakView;
+  state: StreakState;
+  /** Words added per effective day, for the calendar heatmap. */
+  counts: Map<string, number>;
+  /** First day the user ever added a word, so blank months aren't "missed". */
+  firstActiveDay: string | null;
+  /** Milestone awaiting celebration, or null. */
+  milestone: number | null;
+  celebrateMilestone: (m: number) => void;
+  /** Give up on an open repair challenge. */
+  declineRepair: () => void;
+}
+
+const EMPTY_VIEW: StreakView = {
+  streak: 0,
+  longestStreak: 0,
+  freezes: 0,
+  todayCount: 0,
+  todayMet: false,
+  remainingToday: 0,
+  daysToNextFreeze: FREEZE_EVERY,
+  repair: null,
+};
+
+export function useStreakManager(): StreakManager {
+  const words = useAllWords();
+  const [goal] = useDailyGoal();
+  const [state, setState] = useState<StreakState | null>(null);
+
+  const counts = useMemo(
+    () => countsByDay(words.map((w) => w.createdAt)),
+    [words]
+  );
+  const firstActiveDay = useMemo(() => {
+    const keys = [...counts.keys()].sort();
+    return keys.length ? keys[0] : null;
+  }, [counts]);
+
+  // Load the stored overlay once; a corrupt or absent payload starts fresh.
+  useEffect(() => {
+    let cancelled = false;
+    getStreakStateRaw().then((raw) => {
+      if (cancelled) return;
+      const stored = raw as StreakState | null;
+      setState(
+        stored && stored.version === STREAK_STATE_VERSION ? stored : initialState()
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Advance through elapsed days and resolve repairs, then persist if changed.
+  // Compared by value so this can't loop on its own output.
+  useEffect(() => {
+    if (!state || goal <= 0) return;
+    const next = reconcile(state, counts, goal);
+    if (JSON.stringify(next) !== JSON.stringify(state)) {
+      setState(next);
+      setStreakStateRaw(next);
+    }
+  }, [state, counts, goal]);
+
+  const view = useMemo(
+    () => (state && goal > 0 ? project(state, counts, goal) : EMPTY_VIEW),
+    [state, counts, goal]
+  );
+
+  const milestone = useMemo(
+    () => (state ? pendingMilestone(state, view.streak) : null),
+    [state, view.streak]
+  );
+
+  const celebrateMilestone = useCallback((m: number) => {
+    setState((prev) => {
+      if (!prev || prev.celebrated.includes(m)) return prev;
+      const next = { ...prev, celebrated: [...prev.celebrated, m] };
+      setStreakStateRaw(next);
+      return next;
+    });
+  }, []);
+
+  const declineRepair = useCallback(() => {
+    setState((prev) => {
+      if (!prev || !prev.repair) return prev;
+      const next = { ...prev, repair: null };
+      setStreakStateRaw(next);
+      return next;
+    });
+  }, []);
+
+  return {
+    ready: state !== null,
+    view,
+    state: state ?? initialState(),
+    counts,
+    firstActiveDay,
+    milestone,
+    celebrateMilestone,
+    declineRepair,
+  };
 }
 
 /**

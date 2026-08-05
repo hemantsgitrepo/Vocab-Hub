@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   Animated,
   Easing,
@@ -11,43 +11,41 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import {
-  BookOpen,
   ChevronRight,
   Flame,
   GraduationCap,
   Headphones,
+  HeartCrack,
   PlusCircle,
+  Snowflake,
   Trophy,
   X,
 } from 'lucide-react-native';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
-import { DayEntry } from '../lib/streak';
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
-const MILESTONES = [3, 7, 14, 21, 30, 50, 100, 365];
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const COLS = 4;
-const NODE_R = 21;
-const ROW_H = 96;
-const LABEL_H = 34;
+import {
+  FREEZE_EVERY,
+  MILESTONES,
+  REPAIR_WINDOW_HOURS,
+  StreakView,
+} from '../lib/streakEngine';
+import StreakCalendar from '../ui/StreakCalendar';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  history: DayEntry[]; // oldest first, ends today
-  streak: number;
-  best: number;
-  metDays: number;
+  view: StreakView;
+  /** Words per effective day — the calendar's data source. */
+  counts: Map<string, number>;
+  protectedDays: string[];
+  firstActiveDay: string | null;
   totalWords: number;
   goal: number;
 }
 
+/** Next target, taken from the list the engine actually celebrates on. */
 function nextMilestone(streak: number): number {
   return MILESTONES.find((m) => m > streak) ?? streak + 100;
 }
@@ -103,90 +101,44 @@ function motivation(
 export default function StreakJourneyModal({
   visible,
   onClose,
-  history,
-  streak,
-  best,
-  metDays,
+  view,
+  counts,
+  protectedDays,
+  firstActiveDay,
   totalWords,
   goal,
 }: Props) {
   const { colors } = useAppTheme();
   const navigation = useNavigation<any>();
-  const [mapWidth, setMapWidth] = useState(0);
 
-  const today = history[history.length - 1];
-  const todayMet = today?.met ?? false;
-  const remaining = Math.max(goal - (today?.count ?? 0), 0);
+  const streak = view.streak;
+  const best = view.longestStreak;
+  const todayMet = view.todayMet;
+  const remaining = view.remainingToday;
   const milestone = nextMilestone(streak);
   const message = motivation(streak, todayMet, remaining, totalWords);
 
-  // ----- Geometry: serpentine node positions + connecting path -----
-  const nodeCount = history.length + 1; // +1 trophy milestone node
-  const geometry = useMemo(() => {
-    if (mapWidth <= 0) return null;
-    const colW = mapWidth / COLS;
-    const points = Array.from({ length: nodeCount }, (_, i) => {
-      const row = Math.floor(i / COLS);
-      const col = i % COLS;
-      const c = row % 2 === 0 ? col : COLS - 1 - col; // snake back on odd rows
-      return { x: colW * c + colW / 2, y: NODE_R + 8 + row * ROW_H };
-    });
-    let d = `M ${points[0].x} ${points[0].y}`;
-    let length = 0;
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
-      const cur = points[i];
-      if (prev.y === cur.y) {
-        d += ` L ${cur.x} ${cur.y}`;
-        length += Math.abs(cur.x - prev.x);
-      } else {
-        // U-turn into the next row, bulging past the outer edge.
-        const dir = prev.x > mapWidth / 2 ? 1 : -1;
-        const bulge = colW * 0.6 * dir;
-        d += ` C ${prev.x + bulge} ${prev.y}, ${cur.x + bulge} ${cur.y}, ${cur.x} ${cur.y}`;
-        length += ROW_H + Math.abs(bulge) * 1.3; // close-enough arc length
-      }
-    }
-    const height = points[points.length - 1].y + NODE_R + LABEL_H;
-    return { points, d, length, height, colW };
-  }, [mapWidth, nodeCount]);
+  // Derived from the same effective-day counts the calendar uses, so the two
+  // can't disagree across the 2am grace boundary.
+  const metDays = useMemo(
+    () => (goal > 0 ? [...counts.values()].filter((c) => c >= goal).length : 0),
+    [counts, goal]
+  );
 
   // ----- Animations -----
-  const pathAnim = useMemo(() => new Animated.Value(0), []);
   const msgAnim = useMemo(() => new Animated.Value(0), []);
   const flameAnim = useMemo(() => new Animated.Value(1), []);
-  const ringAnim = useMemo(() => new Animated.Value(0), []);
-  const nodeAnims = useMemo(
-    () => Array.from({ length: nodeCount }, () => new Animated.Value(0)),
-    [nodeCount]
-  );
 
   useEffect(() => {
     if (!visible) return;
-    pathAnim.setValue(0);
     msgAnim.setValue(0);
-    nodeAnims.forEach((a) => a.setValue(0));
 
-    const entrance = Animated.parallel([
-      Animated.timing(pathAnim, {
-        toValue: 1,
-        duration: 1300,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: false, // SVG props need the JS driver
-      }),
-      Animated.stagger(
-        55,
-        nodeAnims.map((a) =>
-          Animated.spring(a, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true })
-        )
-      ),
-      Animated.timing(msgAnim, {
-        toValue: 1,
-        duration: 500,
-        delay: 700,
-        useNativeDriver: true,
-      }),
-    ]);
+    const entrance = Animated.timing(msgAnim, {
+      toValue: 1,
+      duration: 500,
+      delay: 240,
+      useNativeDriver: true,
+    });
     const flameLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(flameAnim, {
@@ -203,23 +155,13 @@ export default function StreakJourneyModal({
         }),
       ])
     );
-    const ringLoop = Animated.loop(
-      Animated.timing(ringAnim, {
-        toValue: 1,
-        duration: 1500,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      })
-    );
     entrance.start();
     flameLoop.start();
-    ringLoop.start();
     return () => {
       entrance.stop();
       flameLoop.stop();
-      ringLoop.stop();
     };
-  }, [visible, nodeAnims, pathAnim, msgAnim, flameAnim, ringAnim]);
+  }, [visible, msgAnim, flameAnim]);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -287,8 +229,10 @@ export default function StreakJourneyModal({
       <SafeAreaView style={styles.safe} edges={['top']}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {/* ----- Header ----- */}
+          {/* Amber/coral matches the home streak card — one colour identity
+              for the streak across both surfaces. */}
           <LinearGradient
-            colors={[colors.primary, colors.violet]}
+            colors={[colors.amber, colors.coral]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.header}
@@ -297,7 +241,7 @@ export default function StreakJourneyModal({
               <X size={22} color="#FFFFFF" />
             </Pressable>
             <Animated.View style={[styles.flameHalo, { transform: [{ scale: flameAnim }] }]}>
-              <Flame size={44} color={colors.amber} fill={colors.amber} />
+              <Flame size={44} color="#FFFFFF" fill="#FFFFFF" />
             </Animated.View>
             <Text variant="displayMedium" style={styles.headerStreak}>
               {streak}
@@ -338,151 +282,66 @@ export default function StreakJourneyModal({
             </Card>
             <Card style={styles.statCard}>
               <Card.Content style={styles.statContent}>
-                <BookOpen size={20} color={colors.violet} />
+                <Snowflake size={20} color={colors.primary} />
                 <Text variant="titleLarge" style={styles.statNum}>
-                  {totalWords}
+                  {view.freezes}
                 </Text>
                 <Text variant="labelSmall" style={styles.statLabel}>
-                  words learned
+                  {view.freezes === 1 ? 'freeze ready' : 'freezes ready'}
                 </Text>
               </Card.Content>
             </Card>
           </View>
 
-          {/* ----- Journey map ----- */}
+          {/* ----- Activity calendar ----- */}
           <Text variant="titleMedium" style={styles.sectionTitle}>
-            Your last {history.length} days
+            Your activity
           </Text>
-          <Card style={styles.mapCard}>
+          <StreakCalendar
+            counts={counts}
+            protectedDays={protectedDays}
+            goal={goal}
+            firstActiveDay={firstActiveDay}
+          />
+
+          {/* ----- How the safety net works ----- */}
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Your safety net
+          </Text>
+          <Card style={styles.messageCard}>
             <Card.Content>
-              <View onLayout={(e) => setMapWidth(e.nativeEvent.layout.width)}>
-                {geometry && (
-                  <View style={{ height: geometry.height }}>
-                    <Svg width={mapWidth} height={geometry.height}>
-                      <Defs>
-                        <SvgGradient id="journey" x1="0" y1="0" x2="1" y2="1">
-                          <Stop offset="0" stopColor={colors.primary} />
-                          <Stop offset="1" stopColor={colors.violet} />
-                        </SvgGradient>
-                      </Defs>
-                      {/* Faint full route underneath, so the road ahead is visible */}
-                      <Path
-                        d={geometry.d}
-                        stroke={colors.border}
-                        strokeWidth={4}
-                        strokeLinecap="round"
-                        fill="none"
-                      />
-                      <AnimatedPath
-                        d={geometry.d}
-                        stroke="url(#journey)"
-                        strokeWidth={4}
-                        strokeLinecap="round"
-                        fill="none"
-                        strokeDasharray={[geometry.length, geometry.length]}
-                        strokeDashoffset={pathAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [geometry.length, 0],
-                        })}
-                      />
-                    </Svg>
-                    {history.map((day, i) => {
-                      const p = geometry.points[i];
-                      const label = day.isToday ? 'Today' : WEEKDAYS[day.date.getDay()];
-                      return (
-                        <Animated.View
-                          key={day.date.getTime()}
-                          style={[
-                            styles.nodeWrap,
-                            {
-                              left: p.x - geometry.colW / 2,
-                              top: p.y - NODE_R,
-                              width: geometry.colW,
-                              opacity: nodeAnims[i],
-                              transform: [{ scale: nodeAnims[i] }],
-                            },
-                          ]}
-                        >
-                          {day.isToday && (
-                            <Animated.View
-                              style={[
-                                styles.todayRing,
-                                {
-                                  opacity: ringAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [0.55, 0],
-                                  }),
-                                  transform: [
-                                    {
-                                      scale: ringAnim.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [1, 1.7],
-                                      }),
-                                    },
-                                  ],
-                                },
-                              ]}
-                            />
-                          )}
-                          <View
-                            style={[
-                              styles.node,
-                              day.met
-                                ? styles.nodeMet
-                                : day.isToday
-                                  ? styles.nodeToday
-                                  : styles.nodeMissed,
-                            ]}
-                          >
-                            {day.met ? (
-                              <Flame size={20} color="#FFFFFF" fill="#FFFFFF" />
-                            ) : day.isToday ? (
-                              <Text variant="labelMedium" style={styles.nodeCount}>
-                                {day.count}/{goal}
-                              </Text>
-                            ) : (
-                              <View style={styles.nodeDot} />
-                            )}
-                          </View>
-                          <Text
-                            variant="labelSmall"
-                            style={[styles.nodeLabel, day.isToday && styles.nodeLabelToday]}
-                          >
-                            {label}
-                          </Text>
-                        </Animated.View>
-                      );
-                    })}
-                    {/* Trophy node: the next milestone up the road */}
-                    {(() => {
-                      const p = geometry.points[nodeCount - 1];
-                      return (
-                        <Animated.View
-                          style={[
-                            styles.nodeWrap,
-                            {
-                              left: p.x - geometry.colW / 2,
-                              top: p.y - NODE_R,
-                              width: geometry.colW,
-                              opacity: nodeAnims[nodeCount - 1],
-                              transform: [{ scale: nodeAnims[nodeCount - 1] }],
-                            },
-                          ]}
-                        >
-                          <View style={[styles.node, styles.nodeGoal]}>
-                            <Trophy size={20} color="#FFFFFF" />
-                          </View>
-                          <Text variant="labelSmall" style={[styles.nodeLabel, styles.nodeLabelGoal]}>
-                            Day {milestone}
-                          </Text>
-                        </Animated.View>
-                      );
-                    })()}
-                  </View>
-                )}
+              <View style={styles.netRow}>
+                <View style={[styles.netIcon, { backgroundColor: colors.primary + '22' }]}>
+                  <Snowflake size={18} color={colors.primary} />
+                </View>
+                <View style={styles.netText}>
+                  <Text variant="titleSmall" style={styles.netTitle}>
+                    Streak freezes
+                  </Text>
+                  <Text variant="bodySmall" style={styles.netBody}>
+                    You earn one free freeze every {FREEZE_EVERY} days. Miss a day and a freeze is
+                    spent automatically to keep your streak alive — those days show as
+                    {' '}snowflakes above.
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.netRow, styles.netRowLast]}>
+                <View style={[styles.netIcon, { backgroundColor: colors.coral + '22' }]}>
+                  <HeartCrack size={18} color={colors.coral} />
+                </View>
+                <View style={styles.netText}>
+                  <Text variant="titleSmall" style={styles.netTitle}>
+                    Repair challenge
+                  </Text>
+                  <Text variant="bodySmall" style={styles.netBody}>
+                    Break a streak with no freeze left and you get {REPAIR_WINDOW_HOURS} hours to
+                    win it back in one bigger session.
+                  </Text>
+                </View>
               </View>
             </Card.Content>
           </Card>
+
 
           {/* ----- Motivation ----- */}
           <Animated.View
@@ -563,54 +422,26 @@ const makeStyles = (colors: AppColors) =>
       marginBottom: 8,
     },
     headerStreak: { color: '#FFFFFF', fontWeight: '700', lineHeight: 52 },
-    headerLabel: { color: '#E0E7FF' },
-    headerSub: { color: '#C7D2FE', marginTop: 8, textAlign: 'center' },
+    headerLabel: { color: '#FFFFFFE6', fontWeight: '700' },
+    headerSub: { color: '#FFFFFFCC', marginTop: 8, textAlign: 'center' },
     statsRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
     statCard: { flex: 1, backgroundColor: colors.surface },
     statContent: { alignItems: 'center', gap: 2, paddingVertical: 12, paddingHorizontal: 4 },
     statNum: { color: colors.text, fontWeight: '700' },
     statLabel: { color: colors.muted, textAlign: 'center' },
     sectionTitle: { color: colors.text, fontWeight: '600', marginTop: 20, marginBottom: 8 },
-    mapCard: { backgroundColor: colors.surface },
-    nodeWrap: { position: 'absolute', alignItems: 'center' },
-    node: {
-      width: NODE_R * 2,
-      height: NODE_R * 2,
-      borderRadius: NODE_R,
+    netRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginBottom: 14 },
+    netRowLast: { marginBottom: 0 },
+    netIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 13,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    nodeMet: { backgroundColor: colors.amber },
-    nodeMissed: {
-      backgroundColor: colors.surfaceAlt,
-      borderWidth: 2,
-      borderColor: colors.border,
-    },
-    nodeToday: {
-      backgroundColor: colors.surface,
-      borderWidth: 2,
-      borderColor: colors.primary,
-    },
-    nodeGoal: { backgroundColor: colors.violet },
-    nodeDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.border,
-    },
-    nodeCount: { color: colors.primary, fontWeight: '700' },
-    todayRing: {
-      position: 'absolute',
-      top: 0,
-      width: NODE_R * 2,
-      height: NODE_R * 2,
-      borderRadius: NODE_R,
-      borderWidth: 2,
-      borderColor: colors.primary,
-    },
-    nodeLabel: { color: colors.muted, marginTop: 4 },
-    nodeLabelToday: { color: colors.primary, fontWeight: '700' },
-    nodeLabelGoal: { color: colors.violet, fontWeight: '700' },
+    netText: { flex: 1 },
+    netTitle: { color: colors.text, fontWeight: '700' },
+    netBody: { color: colors.muted, marginTop: 2, lineHeight: 18 },
     messageCard: { backgroundColor: colors.surface, marginTop: 20 },
     messageTitle: { color: colors.text, fontWeight: '700' },
     messageBody: { color: colors.muted, marginTop: 4, lineHeight: 21 },

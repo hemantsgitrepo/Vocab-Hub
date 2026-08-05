@@ -164,6 +164,27 @@ export async function setCelebratedUnlocks(keys: string[]): Promise<void> {
   await database.localStorage.set(CELEBRATED_KEY, JSON.stringify(keys));
 }
 
+/**
+ * Persisted streak overlay — freeze inventory, protected days, open repair
+ * challenge and celebrated milestones. Whether a day hit the goal is always
+ * derived from word timestamps, so only the non-derivable parts live here.
+ */
+const STREAK_STATE_KEY = 'streak.state';
+
+export async function getStreakStateRaw(): Promise<unknown | null> {
+  const raw = await database.localStorage.get<string>(STREAK_STATE_KEY);
+  if (raw == null) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null; // corrupt payload: fall back to a fresh state
+  }
+}
+
+export async function setStreakStateRaw(state: unknown): Promise<void> {
+  await database.localStorage.set(STREAK_STATE_KEY, JSON.stringify(state));
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const DEFAULT_THEME_MODE: ThemeMode = 'system';

@@ -3,19 +3,20 @@ import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BookOpen, Flame, Sparkles, Trash, Trophy } from 'lucide-react-native';
+import { BookOpen, Sparkles, Trash, Trophy } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAllWords, useDailyGoal } from '../hooks';
+import { useAllWords, useDailyGoal, useStreakManager } from '../hooks';
 import EmptyState from '../ui/EmptyState';
 import { AppColors, difficultyColor } from '../theme';
 import { useAppTheme } from '../ThemeContext';
-import { bestStreak, computeStreak, countMetDays, countToday, dayHistory } from '../lib/streak';
+import StreakCard from '../ui/StreakCard';
+import StreakMilestoneModal from '../ui/StreakMilestoneModal';
+import { useUnlockCelebration } from '../ui/UnlockProvider';
+import StreakRepairModal from '../ui/StreakRepairModal';
 import { deleteWord } from '../db/words';
 import StreakJourneyModal from './StreakJourneyModal';
 import GameArcade from './games/GameArcade';
 import { useAppDialogs } from '../ui/AppDialogs';
-
-const JOURNEY_DAYS = 14;
 
 export default function DashboardScreen() {
   const { colors } = useAppTheme();
@@ -25,9 +26,18 @@ export default function DashboardScreen() {
   const [goal] = useDailyGoal();
   const [journeyOpen, setJourneyOpen] = useState(false);
 
-  const dates = words.map((w) => w.createdAt);
-  const today = countToday(dates);
-  const streak = computeStreak(dates, goal);
+  const streakMgr = useStreakManager();
+  const { view: streakView } = streakMgr;
+  // A bulk import can unlock a game and cross a streak milestone at once. Let
+  // the game celebration land first rather than stacking two fanfares.
+  const { celebration: gameCelebration } = useUnlockCelebration();
+  // Local so a dismissed challenge doesn't immediately reopen this session.
+  const [repairDismissed, setRepairDismissed] = useState(false);
+
+  // Sourced from the streak engine so the 2am grace period applies here too —
+  // at 01:00 the card and "today's progress" must agree on which day it is.
+  const today = streakView.todayCount;
+  const streak = streakView.streak;
   const mastered = words.filter((w) => w.practiceStatus === 'mastered').length;
   const progress = goal > 0 ? Math.min(today / goal, 1) : 0;
   const recent = words.slice(0, 5);
@@ -86,25 +96,12 @@ export default function DashboardScreen() {
                 style={styles.progress}
               />
             </View>
-            <Pressable
-              onPress={() => setJourneyOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="View your streak journey"
-              style={({ pressed }) => [styles.streakBadge, pressed && styles.streakBadgePressed]}
-            >
-              <Flame size={28} color={colors.amber} fill={colors.amber} />
-              <Text variant="titleLarge" style={styles.streakNum}>
-                {streak}
-              </Text>
-              <Text variant="labelSmall" style={styles.streakLabel}>
-                day streak
-              </Text>
-              <Text variant="labelSmall" style={styles.streakHint}>
-                tap for journey
-              </Text>
-            </Pressable>
           </View>
         </LinearGradient>
+
+        {/* Summary only — the calendar and mechanics live one tap away in the
+            journey modal, keeping the home screen scannable. */}
+        <StreakCard view={streakView} onPress={() => setJourneyOpen(true)} />
 
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
@@ -195,12 +192,34 @@ export default function DashboardScreen() {
       <StreakJourneyModal
         visible={journeyOpen}
         onClose={() => setJourneyOpen(false)}
-        history={dayHistory(dates, goal, JOURNEY_DAYS)}
-        streak={streak}
-        best={bestStreak(dates, goal)}
-        metDays={countMetDays(dates, goal)}
+        view={streakView}
+        counts={streakMgr.counts}
+        protectedDays={streakMgr.state.protectedDays}
+        firstActiveDay={streakMgr.firstActiveDay}
         totalWords={words.length}
         goal={goal}
+      />
+
+      <StreakMilestoneModal
+        milestone={gameCelebration ? null : streakMgr.milestone}
+        freezes={streakView.freezes}
+        onClose={() => {
+          if (streakMgr.milestone !== null) streakMgr.celebrateMilestone(streakMgr.milestone);
+        }}
+      />
+
+      <StreakRepairModal
+        repair={repairDismissed ? null : streakView.repair}
+        todayCount={streakView.todayCount}
+        onAccept={() => {
+          // Keep the challenge running — just get out of the way so they can add words.
+          setRepairDismissed(true);
+          navigation.navigate('Add');
+        }}
+        onDecline={() => {
+          setRepairDismissed(true);
+          streakMgr.declineRepair();
+        }}
       />
     </SafeAreaView>
   );
@@ -219,18 +238,6 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   heroCount: { color: '#FFFFFF', fontWeight: '700', marginVertical: 4 },
   heroGoal: { color: '#C7D2FE' },
   progress: { height: 8, borderRadius: 4, backgroundColor: '#FFFFFF33', marginTop: 8 },
-  streakBadge: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF1F',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginLeft: 16,
-  },
-  streakBadgePressed: { backgroundColor: '#FFFFFF33', transform: [{ scale: 0.96 }] },
-  streakNum: { color: '#FFFFFF', fontWeight: '700' },
-  streakLabel: { color: '#E0E7FF' },
-  streakHint: { color: '#FFFFFF99', marginTop: 2, fontSize: 9 },
   statsRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   statCard: { flex: 1, backgroundColor: colors.surface },
   statContent: { alignItems: 'center', gap: 2 },
