@@ -57,9 +57,14 @@ export const TRAVEL_GUIDE: Guide = {
       body: 'Speed (0.8x / 1x / 1.25x) and pitch (low / mid / high) adjust the on-device voice. Nothing is streamed or downloaded — playback is fully offline.',
     },
     {
+      Icon: Layers,
+      title: 'Start from a category',
+      body: 'The chips at the top build your playlist in one tap. All words plays everything; Recent covers the last 7 days; Needs practice is everything you have not mastered yet; Mastered is a light revision pass; Challenging pulls only the words marked hard. The number on each chip is how many words it holds.',
+    },
+    {
       Icon: Repeat,
-      title: 'Pick a playlist, then loop it',
-      body: 'Tap words to include or exclude them, or use Select all. Loop restarts the playlist when it ends, and Skip jumps to the next word without stopping the session.',
+      title: 'Fine-tune, then loop it',
+      body: 'Tap any word to drop it from the current category, or use Select all and Clear. Switching category starts fresh and ends the current session. Loop restarts the playlist when it ends, and Skip jumps to the next word without stopping.',
     },
   ],
 };

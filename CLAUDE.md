@@ -21,7 +21,7 @@
    - Word Origin (Optional string)
    - Part of Speech, Word Forms (grammatical variants)
    - Created At (timestamp), Difficulty Level, Practice Status
-3. **Audio / Travel Mode:** Continuous back-to-back playback of words + meanings with pause intervals, TTS pitch/speed control, and background audio readiness.
+3. **Audio / Travel Mode:** Continuous back-to-back playback of words + meanings with pause intervals, TTS pitch/speed control, and background audio readiness. The playlist is picked from predefined categories (`src/lib/travelCategories.ts` — All / Recent / Needs practice / Mastered / Challenging), with per-word exclusions as refinement; add a category by appending one entry to `TRAVEL_CATEGORIES`.
 4. **Testing Engine:** Dynamic quizzes (Flashcards, Multiple Choice, Fill-in-the-Blanks) based on user's learned vocabulary pool.
 5. **Word Management:** Delete-word with confirmation warning; CSV import/export (bulk add/backup) matched by header name, with a downloadable template.
 6. **Game Arcade:** 5 vocabulary mini-games (Vocab Millionaire, Memory Match, Scrabble, Crossword, Spelling Bee — `src/screens/games/`) that unlock progressively as the user's word count grows (thresholds in `src/lib/games.ts`). Each has SFX (tap/success/error/fanfare) toggleable in Settings.

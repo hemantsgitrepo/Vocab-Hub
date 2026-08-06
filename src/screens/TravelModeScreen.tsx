@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  AppState,
+  Easing,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, SegmentedButtons, Text } from 'react-native-paper';
 import Tts from 'react-native-tts';
@@ -26,6 +35,12 @@ import {
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 import { TRAVEL_GUIDE } from '../lib/guides';
+import {
+  CategoryKey,
+  TRAVEL_CATEGORIES,
+  categoryCounts,
+  categoryFor,
+} from '../lib/travelCategories';
 import { useInfoSheet } from '../ui/InfoSheet';
 import EmptyState from '../ui/EmptyState';
 
@@ -54,7 +69,11 @@ export default function TravelModeScreen() {
   const help = useInfoSheet(TRAVEL_GUIDE);
   const words = useAllWords();
   const [travelFields] = useTravelFields();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [category, setCategory] = useState<CategoryKey>('all');
+  // Words the user has hand-removed from the current category. Tracking
+  // exclusions rather than inclusions means words added later are picked up
+  // automatically, and clearing refinements is just an empty set.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [speed, setSpeed] = useState('1');
@@ -69,15 +88,20 @@ export default function TravelModeScreen() {
   // Read inside the async playback loop, so mid-session edits take effect.
   const fieldsRef = useRef(travelFields);
   fieldsRef.current = travelFields;
-  const initialised = useRef(false);
 
-  // Select everything once words first arrive; after that the user is in charge.
-  useEffect(() => {
-    if (!initialised.current && words.length > 0) {
-      initialised.current = true;
-      setSelected(new Set(words.map((w) => w.id)));
-    }
-  }, [words]);
+  // Recomputed per render pass rather than per tick: category membership only
+  // shifts at a day boundary, so a stable value keeps the list from churning.
+  const now = useMemo(() => new Date(), [words]);
+  const counts = useMemo(() => categoryCounts(words, now), [words, now]);
+  const activeCategory = categoryFor(category);
+  const inCategory = useMemo(
+    () => words.filter((w) => activeCategory.match(w, now)),
+    [words, activeCategory, now]
+  );
+  const queue = useMemo(
+    () => inCategory.filter((w) => !excluded.has(w.id)),
+    [inCategory, excluded]
+  );
 
   /**
    * Ends the wait for the current utterance. Clearing the ref first means a
@@ -154,7 +178,11 @@ export default function TravelModeScreen() {
     Tts.setDefaultPitch(PITCHES[pitch]);
   }, [speed, pitch]);
 
-  const playlist = () => words.filter((w) => selected.has(w.id));
+  // Read through a ref so the async playback loop and the notification
+  // handlers always see the current queue, not their mount-time closure.
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const playlist = () => queueRef.current;
 
   // Last content pushed to the notification, so pausing can redraw it with a
   // Play button instead of losing the word it was sitting on.
@@ -266,7 +294,7 @@ export default function TravelModeScreen() {
   }, []);
 
   const toggleWord = (id: string) => {
-    setSelected((prev) => {
+    setExcluded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -274,17 +302,61 @@ export default function TravelModeScreen() {
     });
   };
 
-  const allSelected = words.length > 0 && selected.size === words.length;
+  const allSelected = inCategory.length > 0 && queue.length === inCategory.length;
   const toggleAll = () =>
-    setSelected(allSelected ? new Set() : new Set(words.map((w) => w.id)));
+    setExcluded(allSelected ? new Set(inCategory.map((w) => w.id)) : new Set());
+
+  /**
+   * Switching category swaps the whole playlist, so any hand-refinements are
+   * dropped and a running session is ended — resuming into a different list
+   * would leave the saved position pointing at the wrong word.
+   */
+  const pickCategory = (key: CategoryKey) => {
+    if (key === category) return;
+    setCategory(key);
+    setExcluded(new Set());
+    if (isPlaying) stopPlayback();
+  };
+
+  // Fade + lift the list whenever the category changes, so a swapped playlist
+  // reads as new content arriving rather than an abrupt repaint.
+  const enter = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    enter.setValue(0);
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [category, enter]);
+
+  const enterStyle = {
+    opacity: enter,
+    transform: [
+      { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+    ],
+  };
 
   const renderItem = ({ item }: { item: Word }) => {
     const active = item.id === currentId;
+    const included = !excluded.has(item.id);
     return (
-      <Pressable onPress={() => toggleWord(item.id)}>
-        <Card style={[styles.wordCard, active && styles.wordCardActive]}>
+      <Pressable
+        onPress={() => toggleWord(item.id)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: included }}
+        accessibilityLabel={item.word}
+      >
+        <Card
+          style={[
+            styles.wordCard,
+            !included && styles.wordCardExcluded,
+            active && styles.wordCardActive,
+          ]}
+        >
           <Card.Content style={styles.wordRow}>
-            {selected.has(item.id) ? (
+            {included ? (
               <CheckSquare size={22} color={colors.primary} />
             ) : (
               <Square size={22} color={colors.muted} />
@@ -332,17 +404,78 @@ export default function TravelModeScreen() {
           />
         </View>
       ) : (
-        <FlatList
-          data={words}
-          keyExtractor={(w) => w.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={
-            <Button mode="text" onPress={toggleAll} compact style={styles.selectAll}>
-              {allSelected ? 'Deselect all' : 'Select all'}
-            </Button>
-          }
-        />
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            // A horizontal ScrollView in a column parent stretches to fill the
+            // free vertical space unless its growth is pinned.
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipRow}
+          >
+            {TRAVEL_CATEGORIES.map((c) => {
+              const on = c.key === category;
+              const count = counts[c.key];
+              return (
+                <Pressable
+                  key={c.key}
+                  onPress={() => pickCategory(c.key)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`${c.label}, ${count} words`}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    on && styles.chipOn,
+                    pressed && styles.chipPressed,
+                  ]}
+                >
+                  <c.Icon size={15} color={on ? '#FFFFFF' : colors.primary} />
+                  <Text style={[styles.chipLabel, on && styles.chipLabelOn]}>
+                    {c.label}
+                  </Text>
+                  <View style={[styles.chipCount, on && styles.chipCountOn]}>
+                    <Text style={[styles.chipCountText, on && styles.chipCountTextOn]}>
+                      {count}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <Animated.View style={[styles.flex, enterStyle]}>
+            {inCategory.length === 0 ? (
+              <View style={styles.categoryEmpty}>
+                <activeCategory.Icon size={30} color={colors.muted} />
+                <Text variant="titleMedium" style={styles.categoryEmptyTitle}>
+                  Nothing in {activeCategory.label.toLowerCase()}
+                </Text>
+                <Text variant="bodySmall" style={styles.categoryEmptyBody}>
+                  {activeCategory.emptyHint}
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={inCategory}
+                keyExtractor={(w) => w.id}
+                renderItem={renderItem}
+                contentContainerStyle={styles.list}
+                ListHeaderComponent={
+                  <View style={styles.listHeader}>
+                    <Text variant="labelLarge" style={styles.queueCount}>
+                      {queue.length === inCategory.length
+                        ? `${inCategory.length} word${inCategory.length === 1 ? '' : 's'} queued`
+                        : `${queue.length} of ${inCategory.length} queued`}
+                    </Text>
+                    <Button mode="text" onPress={toggleAll} compact>
+                      {allSelected ? 'Clear' : 'Select all'}
+                    </Button>
+                  </View>
+                }
+              />
+            )}
+          </Animated.View>
+        </>
       )}
 
       <View style={styles.player}>
@@ -438,9 +571,55 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   title: { color: colors.text, fontWeight: '700' },
   subtitle: { color: colors.muted, marginTop: 2 },
   empty: { flex: 1, justifyContent: 'center' },
-  list: { padding: 16, paddingBottom: 8 },
-  selectAll: { alignSelf: 'flex-end' },
+  list: { paddingHorizontal: 16, paddingBottom: 8 },
+  chipScroll: { flexGrow: 0, flexShrink: 0 },
+  chipRow: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4, gap: 8, alignItems: 'center' },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingLeft: 12,
+    paddingRight: 8,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipPressed: { opacity: 0.7 },
+  chipLabel: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  chipLabelOn: { color: '#FFFFFF' },
+  chipCount: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 9,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+  },
+  chipCountOn: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  chipCountText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  chipCountTextOn: { color: '#FFFFFF' },
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  queueCount: { color: colors.muted },
+  categoryEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 8,
+  },
+  categoryEmptyTitle: { color: colors.text, fontWeight: '600' },
+  categoryEmptyBody: { color: colors.muted, textAlign: 'center' },
   wordCard: { backgroundColor: colors.surface, marginBottom: 8 },
+  wordCardExcluded: { opacity: 0.55 },
   wordCardActive: { borderWidth: 2, borderColor: colors.primary },
   wordRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   wordTextWrap: { flex: 1 },
