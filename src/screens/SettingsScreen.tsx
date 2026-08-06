@@ -1,12 +1,24 @@
-import React, { useMemo, useState } from 'react';
-import { Image, ImageSourcePropType, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Image,
+  ImageSourcePropType,
+  LayoutAnimation,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Vibration,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, Dialog, Divider, Portal, Snackbar, Switch, Text } from 'react-native-paper';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import {
-  Brain,
+  ChevronDown,
   ChevronRight,
   Download,
   ExternalLink,
@@ -20,9 +32,7 @@ import {
   Moon,
   MonitorSmartphone,
   Plus,
-  Scale,
   ShieldCheck,
-  Sparkles,
   Sun,
   Target,
   Upload,
@@ -45,23 +55,15 @@ import { POLICIES, PolicyId } from './legal/policies';
 const MIN_GOAL = 1;
 const MAX_GOAL = 50;
 
-const FEATURES = [
-  {
-    Icon: Headphones,
-    title: 'Travel Audio Mode',
-    body: 'Loop vocabulary audio hands-free while commuting.',
-  },
-  {
-    Icon: Brain,
-    title: 'Adaptive Quizzing',
-    body: 'Practice active recall on learned words.',
-  },
-  {
-    Icon: ShieldCheck,
-    title: 'Offline First',
-    body: 'Local storage with total privacy (built on WatermelonDB).',
-  },
-] as const;
+/**
+ * Short, consistent easing shared by every expand/collapse on this screen.
+ * No opt-in call is needed — layout animations are always on under the New
+ * Architecture, and `setLayoutAnimationEnabledExperimental` only warns there.
+ */
+const COLLAPSE_ANIM = {
+  duration: 220,
+  update: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+} as const;
 
 interface Partner {
   name: string;
@@ -139,6 +141,191 @@ const THEME_OPTIONS: { key: ThemeMode; label: string; Icon: typeof Sun }[] = [
   { key: 'system', label: 'Auto', Icon: MonitorSmartphone },
 ];
 
+/** Groups the cards below it, so related settings read as one block. */
+function SectionLabel({
+  children,
+  styles,
+}: {
+  children: string;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <Text
+      variant="labelMedium"
+      accessibilityRole="header"
+      style={styles.sectionLabel}
+    >
+      {children}
+    </Text>
+  );
+}
+
+/**
+ * A preference row where the whole row is the target, not just the switch.
+ * The Switch is inert — the Pressable owns both the gesture and the
+ * accessibility contract, so a screen reader hears one switch, not two.
+ */
+function SwitchRow({
+  label,
+  hint,
+  value,
+  onToggle,
+  styles,
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onToggle: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        Vibration.vibrate(10);
+        onToggle();
+      }}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      style={({ pressed }) => [styles.fieldRow, pressed && styles.rowPressed]}
+    >
+      <View style={styles.quizText}>
+        <Text variant="bodyLarge" style={styles.fieldLabel}>
+          {label}
+        </Text>
+        {hint ? (
+          <Text variant="bodySmall" style={styles.hint}>
+            {hint}
+          </Text>
+        ) : null}
+      </View>
+      <View pointerEvents="none">
+        <Switch value={value} onValueChange={onToggle} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** Card whose header toggles its body, with a chevron that rotates to match. */
+function CollapsibleCard({
+  Icon,
+  title,
+  subtitle,
+  expanded,
+  onToggle,
+  colors,
+  styles,
+  children,
+}: {
+  Icon: typeof Sun;
+  title: string;
+  subtitle?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  colors: AppColors;
+  styles: ReturnType<typeof makeStyles>;
+  children: React.ReactNode;
+}) {
+  const spin = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(spin, {
+      toValue: expanded ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [expanded, spin]);
+
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+
+  return (
+    <Card style={styles.card}>
+      <Card.Content>
+        <Pressable
+          onPress={() => {
+            LayoutAnimation.configureNext(COLLAPSE_ANIM);
+            onToggle();
+          }}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={title}
+          accessibilityHint={expanded ? 'Collapses this section' : 'Expands this section'}
+          style={({ pressed }) => [styles.collapseHeader, pressed && styles.rowPressed]}
+        >
+          <Icon size={22} color={colors.primary} />
+          <View style={styles.collapseHeaderText}>
+            <Text variant="titleMedium" style={styles.cardTitle}>
+              {title}
+            </Text>
+            {subtitle ? (
+              <Text variant="bodySmall" style={styles.hint}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+          <Animated.View style={{ transform: [{ rotate }] }}>
+            <ChevronDown size={20} color={colors.muted} />
+          </Animated.View>
+        </Pressable>
+        {expanded ? <View style={styles.collapseBody}>{children}</View> : null}
+      </Card.Content>
+    </Card>
+  );
+}
+
+/** Theme option that eases into its selected state instead of snapping. */
+function ThemeOption({
+  label,
+  Icon,
+  active,
+  onPress,
+  colors,
+  styles,
+}: {
+  label: string;
+  Icon: typeof Sun;
+  active: boolean;
+  onPress: () => void;
+  colors: AppColors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const on = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(on, {
+      toValue: active ? 1 : 0,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 90,
+    }).start();
+  }, [active, on]);
+
+  const scale = on.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
+
+  return (
+    <Animated.View style={[styles.flex, { transform: [{ scale }] }]}>
+      <Pressable
+        onPress={() => {
+          Vibration.vibrate(10);
+          onPress();
+        }}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={`${label} theme`}
+        style={[styles.themeOption, active && styles.themeOptionActive]}
+      >
+        <Icon size={20} color={active ? colors.primary : colors.muted} />
+        <Text
+          variant="labelLarge"
+          style={[styles.themeLabel, active && styles.themeLabelActive]}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function SettingsScreen() {
   const { colors, isDark, mode, setMode } = useAppTheme();
   const [goal, setGoal] = useDailyGoal();
@@ -151,6 +338,10 @@ export default function SettingsScreen() {
   const [snack, setSnack] = useState('');
   const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
   const [legalDoc, setLegalDoc] = useState<PolicyId | null>(null);
+  // Travel fields start open so the six toggles stay readable at a glance;
+  // About starts closed because it is read-once reference material.
+  const [travelOpen, setTravelOpen] = useState(true);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const shareCsv = async (fileName: string, content: string, dialogTitle: string) => {
     const file = new File(Paths.cache, fileName);
@@ -217,7 +408,10 @@ export default function SettingsScreen() {
 
   const bump = (delta: number) => {
     const next = Math.min(MAX_GOAL, Math.max(MIN_GOAL, goal + delta));
-    if (next !== goal) setGoal(next);
+    if (next !== goal) {
+      Vibration.vibrate(10);
+      setGoal(next);
+    }
   };
 
   const toggleField = (key: TravelField) => {
@@ -239,46 +433,41 @@ export default function SettingsScreen() {
           Settings
         </Text>
 
+        <SectionLabel styles={styles}>Appearance</SectionLabel>
+
         <Card style={styles.card}>
           <Card.Content>
-            <View style={styles.goalHeader}>
-              <Moon size={22} color={colors.primary} />
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                Appearance
-              </Text>
-            </View>
             <Text variant="bodyMedium" style={styles.hint}>
               Pick a theme, or let Auto follow your device setting.
             </Text>
-            <View style={styles.themeRow}>
-              {THEME_OPTIONS.map(({ key, label, Icon }) => {
-                const active = mode === key;
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => setMode(key)}
-                    style={[styles.themeOption, active && styles.themeOptionActive]}
-                  >
-                    <Icon size={20} color={active ? colors.primary : colors.muted} />
-                    <Text
-                      variant="labelLarge"
-                      style={[styles.themeLabel, active && styles.themeLabelActive]}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View
+              style={styles.themeRow}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="App theme"
+            >
+              {THEME_OPTIONS.map(({ key, label, Icon }) => (
+                <ThemeOption
+                  key={key}
+                  label={label}
+                  Icon={Icon}
+                  active={mode === key}
+                  onPress={() => setMode(key)}
+                  colors={colors}
+                  styles={styles}
+                />
+              ))}
             </View>
           </Card.Content>
         </Card>
+
+        <SectionLabel styles={styles}>Practice</SectionLabel>
 
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.goalHeader}>
               <Target size={22} color={colors.primary} />
               <Text variant="titleMedium" style={styles.cardTitle}>
-                Daily practice goal
+                Daily goal
               </Text>
             </View>
             <Text variant="bodyMedium" style={styles.hint}>
@@ -288,21 +477,42 @@ export default function SettingsScreen() {
             <View style={styles.stepper}>
               <Pressable
                 onPress={() => bump(-1)}
-                style={[styles.stepBtn, goal <= MIN_GOAL && styles.stepBtnDisabled]}
+                disabled={goal <= MIN_GOAL}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease daily goal"
+                accessibilityState={{ disabled: goal <= MIN_GOAL }}
+                style={({ pressed }) => [
+                  styles.stepBtn,
+                  goal <= MIN_GOAL && styles.stepBtnDisabled,
+                  pressed && styles.stepBtnPressed,
+                ]}
               >
                 <Minus size={22} color={goal <= MIN_GOAL ? colors.muted : colors.primary} />
               </Pressable>
-              <Text variant="displaySmall" style={styles.goalNum}>
+              <Text
+                variant="displaySmall"
+                style={styles.goalNum}
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={`${goal} words per day`}
+              >
                 {goal}
               </Text>
               <Pressable
                 onPress={() => bump(1)}
-                style={[styles.stepBtn, goal >= MAX_GOAL && styles.stepBtnDisabled]}
+                disabled={goal >= MAX_GOAL}
+                accessibilityRole="button"
+                accessibilityLabel="Increase daily goal"
+                accessibilityState={{ disabled: goal >= MAX_GOAL }}
+                style={({ pressed }) => [
+                  styles.stepBtn,
+                  goal >= MAX_GOAL && styles.stepBtnDisabled,
+                  pressed && styles.stepBtnPressed,
+                ]}
               >
                 <Plus size={22} color={goal >= MAX_GOAL ? colors.muted : colors.primary} />
               </Pressable>
             </View>
-            <Text variant="labelMedium" style={styles.goalUnit}>
+            <Text variant="labelMedium" style={styles.goalUnit} importantForAccessibility="no">
               words per day
             </Text>
           </Card.Content>
@@ -311,71 +521,57 @@ export default function SettingsScreen() {
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.goalHeader}>
-              <Headphones size={22} color={colors.primary} />
+              <GraduationCap size={22} color={colors.primary} />
               <Text variant="titleMedium" style={styles.cardTitle}>
-                Travel mode audio
+                Quiz prompts
               </Text>
             </View>
-            <Text variant="bodyMedium" style={styles.hint}>
-              Choose what gets read aloud for each word during a session.
-            </Text>
-            {TRAVEL_FIELDS.map((field, i) => (
-              <View key={field.key}>
-                {i > 0 && <Divider />}
-                <View style={styles.fieldRow}>
-                  <Text variant="bodyLarge" style={styles.fieldLabel}>
-                    {field.label}
-                  </Text>
-                  <Switch
-                    value={travelFields.includes(field.key)}
-                    onValueChange={() => toggleField(field.key)}
-                  />
-                </View>
-              </View>
-            ))}
-            {travelFields.length === 0 && (
-              <Text variant="bodySmall" style={styles.warning}>
-                Nothing selected — Travel mode has nothing to play.
-              </Text>
-            )}
+            <SwitchRow
+              label="Ask with synonyms"
+              hint="Shows a synonym instead of the word, so you recall it from a related term."
+              value={quizSynonyms}
+              onToggle={() => setQuizSynonyms(!quizSynonyms)}
+              styles={styles}
+            />
+            <Divider />
+            <SwitchRow
+              label="Ask with antonyms"
+              hint="Shows an antonym instead of the word, so you recall it from its opposite."
+              value={quizAntonyms}
+              onToggle={() => setQuizAntonyms(!quizAntonyms)}
+              styles={styles}
+            />
           </Card.Content>
         </Card>
 
-        <Card style={styles.card}>
-          <Card.Content>
-            <View style={styles.goalHeader}>
-              <GraduationCap size={22} color={colors.primary} />
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                Quiz
-              </Text>
+        <SectionLabel styles={styles}>Audio</SectionLabel>
+
+        <CollapsibleCard
+          Icon={Headphones}
+          title="Travel mode fields"
+          subtitle="What gets read aloud for each word."
+          expanded={travelOpen}
+          onToggle={() => setTravelOpen((v) => !v)}
+          colors={colors}
+          styles={styles}
+        >
+          {TRAVEL_FIELDS.map((field, i) => (
+            <View key={field.key}>
+              {i > 0 && <Divider />}
+              <SwitchRow
+                label={field.label}
+                value={travelFields.includes(field.key)}
+                onToggle={() => toggleField(field.key)}
+                styles={styles}
+              />
             </View>
-            <View style={styles.fieldRow}>
-              <View style={styles.quizText}>
-                <Text variant="bodyLarge" style={styles.fieldLabel}>
-                  Ask with synonyms
-                </Text>
-                <Text variant="bodySmall" style={styles.hint}>
-                  Shows a synonym instead of the word, so you recall it from a
-                  related term.
-                </Text>
-              </View>
-              <Switch value={quizSynonyms} onValueChange={setQuizSynonyms} />
-            </View>
-            <Divider />
-            <View style={styles.fieldRow}>
-              <View style={styles.quizText}>
-                <Text variant="bodyLarge" style={styles.fieldLabel}>
-                  Ask with antonyms
-                </Text>
-                <Text variant="bodySmall" style={styles.hint}>
-                  Shows an antonym instead of the word, so you recall it from
-                  its opposite.
-                </Text>
-              </View>
-              <Switch value={quizAntonyms} onValueChange={setQuizAntonyms} />
-            </View>
-          </Card.Content>
-        </Card>
+          ))}
+          {travelFields.length === 0 && (
+            <Text variant="bodySmall" style={styles.warning}>
+              Nothing selected — Travel mode has nothing to play.
+            </Text>
+          )}
+        </CollapsibleCard>
 
         <Card style={styles.card}>
           <Card.Content>
@@ -385,19 +581,17 @@ export default function SettingsScreen() {
                 Game Arcade
               </Text>
             </View>
-            <View style={styles.fieldRow}>
-              <View style={styles.quizText}>
-                <Text variant="bodyLarge" style={styles.fieldLabel}>
-                  Sound effects
-                </Text>
-                <Text variant="bodySmall" style={styles.hint}>
-                  Taps, chimes, and fanfares while playing arcade games.
-                </Text>
-              </View>
-              <Switch value={gameSounds} onValueChange={setGameSoundsOn} />
-            </View>
+            <SwitchRow
+              label="Sound effects"
+              hint="Taps, chimes, and fanfares while playing arcade games."
+              value={gameSounds}
+              onToggle={() => setGameSoundsOn(!gameSounds)}
+              styles={styles}
+            />
           </Card.Content>
         </Card>
+
+        <SectionLabel styles={styles}>Your data</SectionLabel>
 
         <Card style={styles.card}>
           <Card.Content>
@@ -444,108 +638,65 @@ export default function SettingsScreen() {
           </Card.Content>
         </Card>
 
-        <Card style={styles.card}>
-          <Card.Content>
-            <View style={styles.goalHeader}>
-              <Info size={22} color={colors.primary} />
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                About Vocab Hub
-              </Text>
-            </View>
-            <Text variant="bodyMedium" style={styles.aboutSubtitle}>
-              Designed for ambitious learners and competitive exam aspirants
-              building a high-impact vocabulary.
-            </Text>
+        <SectionLabel styles={styles}>About</SectionLabel>
 
-            <Divider style={styles.aboutDivider} />
+        <CollapsibleCard
+          Icon={Info}
+          title="About &amp; legal"
+          subtitle="Terms, privacy and who builds Vocab Hub."
+          expanded={aboutOpen}
+          onToggle={() => setAboutOpen((v) => !v)}
+          colors={colors}
+          styles={styles}
+        >
+          {POLICIES.map((doc, i) => {
+            const RowIcon = doc.id === 'terms' ? FileText : ShieldCheck;
+            return (
+              <React.Fragment key={doc.id}>
+                {i > 0 && <Divider style={styles.legalDivider} />}
+                <Pressable
+                  onPress={() => setLegalDoc(doc.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={doc.title}
+                  accessibilityHint={doc.subtitle}
+                  style={({ pressed }) => [
+                    styles.legalRow,
+                    pressed && styles.legalRowPressed,
+                  ]}
+                >
+                  <View style={styles.legalIcon}>
+                    <RowIcon size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.legalText}>
+                    <Text variant="bodyLarge" style={styles.featureTitle}>
+                      {doc.title}
+                    </Text>
+                    <Text variant="bodySmall" style={styles.hint}>
+                      {doc.subtitle}
+                    </Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.muted} />
+                </Pressable>
+              </React.Fragment>
+            );
+          })}
 
-            {FEATURES.map((f) => (
-              <View key={f.title} style={styles.featureRow}>
-                <f.Icon size={18} color={colors.violet} />
-                <View style={styles.featureText}>
-                  <Text variant="bodyLarge" style={styles.featureTitle}>
-                    {f.title}
-                  </Text>
-                  <Text variant="bodySmall" style={styles.hint}>
-                    {f.body}
-                  </Text>
-                </View>
-              </View>
+          <Divider style={styles.legalDivider} />
+          <Text variant="labelMedium" style={styles.partnersLabel}>
+            Developed &amp; powered by
+          </Text>
+          <View style={styles.partnersRow}>
+            {PARTNERS.map(({ logoDark, ...p }) => (
+              <PartnerCard
+                key={p.name}
+                {...p}
+                logo={isDark && logoDark ? logoDark : p.logo}
+                colors={colors}
+                styles={styles}
+              />
             ))}
-
-            <Divider style={styles.aboutDivider} />
-
-            <View style={styles.visionRow}>
-              <Sparkles size={16} color={colors.amber} />
-              <Text variant="bodySmall" style={styles.visionText}>
-                We are constantly evolving Vocab Hub with intelligent learning
-                features—stay tuned for upcoming updates!
-              </Text>
-            </View>
-          </Card.Content>
-        </Card>
-
-        <Card style={styles.card}>
-          <Card.Content>
-            <View style={styles.goalHeader}>
-              <Scale size={22} color={colors.primary} />
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                About &amp; Legal
-              </Text>
-            </View>
-
-            {POLICIES.map((doc, i) => {
-              const RowIcon = doc.id === 'terms' ? FileText : ShieldCheck;
-              return (
-                <React.Fragment key={doc.id}>
-                  {i > 0 && <Divider style={styles.legalDivider} />}
-                  <Pressable
-                    onPress={() => setLegalDoc(doc.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={doc.title}
-                    accessibilityHint={doc.subtitle}
-                    style={({ pressed }) => [
-                      styles.legalRow,
-                      pressed && styles.legalRowPressed,
-                    ]}
-                  >
-                    <View style={styles.legalIcon}>
-                      <RowIcon size={20} color={colors.primary} />
-                    </View>
-                    <View style={styles.legalText}>
-                      <Text variant="bodyLarge" style={styles.featureTitle}>
-                        {doc.title}
-                      </Text>
-                      <Text variant="bodySmall" style={styles.hint}>
-                        {doc.subtitle}
-                      </Text>
-                    </View>
-                    <ChevronRight size={18} color={colors.muted} />
-                  </Pressable>
-                </React.Fragment>
-              );
-            })}
-          </Card.Content>
-        </Card>
-
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.cardTitle}>
-              Developed &amp; Powered By
-            </Text>
-            <View style={styles.partnersRow}>
-              {PARTNERS.map(({ logoDark, ...p }) => (
-                <PartnerCard
-                  key={p.name}
-                  {...p}
-                  logo={isDark && logoDark ? logoDark : p.logo}
-                  colors={colors}
-                  styles={styles}
-                />
-              ))}
-            </View>
-          </Card.Content>
-        </Card>
+          </View>
+        </CollapsibleCard>
       </ScrollView>
 
       <Portal>
@@ -595,11 +746,32 @@ export default function SettingsScreen() {
 
 const makeStyles = (colors: AppColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
-  title: { color: colors.text, fontWeight: '700', marginBottom: 12 },
-  card: { backgroundColor: colors.surface, marginBottom: 16 },
+  title: { color: colors.text, fontWeight: '700', marginBottom: 4 },
+  card: { backgroundColor: colors.surface, marginBottom: 12 },
   goalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   cardTitle: { color: colors.text, fontWeight: '600' },
+  sectionLabel: {
+    color: colors.muted,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginTop: 18,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  collapseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  collapseHeaderText: { flex: 1 },
+  collapseBody: { marginTop: 6 },
+  rowPressed: { backgroundColor: colors.surfaceAlt },
+  stepBtnPressed: { backgroundColor: colors.surfaceAlt, transform: [{ scale: 0.94 }] },
+  partnersLabel: { color: colors.muted, marginTop: 14 },
   legalRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -642,11 +814,13 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginHorizontal: -4,
+    borderRadius: 10,
   },
   themeRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
   themeOption: {
-    flex: 1,
     alignItems: 'center',
     gap: 6,
     paddingVertical: 14,
@@ -664,14 +838,8 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   fieldLabel: { color: colors.text },
   quizText: { flex: 1, paddingRight: 12 },
   warning: { color: colors.red, marginTop: 8 },
-  aboutSubtitle: { color: colors.muted, lineHeight: 20, marginTop: 4 },
-  aboutDivider: { backgroundColor: colors.border, marginVertical: 14 },
-  featureRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 14 },
-  featureText: { flex: 1 },
   featureTitle: { color: colors.text, fontWeight: '600' },
-  visionRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  visionText: { flex: 1, color: colors.muted, fontStyle: 'italic', lineHeight: 18 },
-  partnersRow: { flexDirection: 'row', gap: 12, marginTop: 14 },
+  partnersRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
   partnerCard: {
     flex: 1,
     alignItems: 'center',
