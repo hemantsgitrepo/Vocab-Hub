@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, SegmentedButtons, Text } from 'react-native-paper';
 import Tts from 'react-native-tts';
@@ -17,6 +17,12 @@ import Word from '../db/models/Word';
 import { useAllWords, useTravelFields } from '../hooks';
 import { TRAVEL_FIELDS, TravelField } from '../db/settings';
 import { initTts } from '../lib/tts';
+import {
+  hidePlaybackNotification,
+  onPlaybackAction,
+  requestPlaybackNotificationPermission,
+  showPlaybackNotification,
+} from '../lib/playbackNotification';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 import { TRAVEL_GUIDE } from '../lib/guides';
@@ -73,34 +79,95 @@ export default function TravelModeScreen() {
     }
   }, [words]);
 
+  /**
+   * Ends the wait for the current utterance. Clearing the ref first means a
+   * late event from an already-finished utterance can't resolve the *next*
+   * segment's promise early.
+   */
+  const finishSegment = useCallback(() => {
+    const resolve = resolveRef.current;
+    resolveRef.current = null;
+    resolve?.();
+  }, []);
+
   useEffect(() => {
     initTts();
-    const done = () => resolveRef.current?.();
     const subs: any[] = [
-      Tts.addEventListener('tts-finish', done),
-      Tts.addEventListener('tts-cancel', done),
+      Tts.addEventListener('tts-finish', finishSegment),
+      Tts.addEventListener('tts-cancel', finishSegment),
+      // Without this a failed utterance would leave the loop awaiting forever.
+      Tts.addEventListener('tts-error', finishSegment),
     ];
     return () => {
       playToken.current++;
       Tts.stop();
       subs.forEach((s) => s?.remove?.());
     };
-  }, []);
+  }, [finishSegment]);
 
   const speak = (text: string) =>
     new Promise<void>((resolve) => {
       resolveRef.current = resolve;
-      Tts.speak(text);
+      // speak() rejects on Android when the engine refuses the utterance, and
+      // no event follows — skip that segment rather than stalling the whole
+      // playlist. (Its typings claim an utteranceId; it returns the promise.)
+      Promise.resolve(Tts.speak(text) as unknown).catch(finishSegment);
     });
 
-  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  // RN timers pause while the Android activity is paused (screen locked or app
+  // backgrounded), which would stall the playback loop between utterances. Off
+  // screen the pause intervals are skipped so playback chains directly off the
+  // tts-finish events, which keep firing in the background.
+  const pendingWait = useRef<{ resolve: () => void; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active' && pendingWait.current) {
+        clearTimeout(pendingWait.current.timer);
+        const { resolve } = pendingWait.current;
+        pendingWait.current = null;
+        resolve();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+      if (AppState.currentState !== 'active') {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => {
+        pendingWait.current = null;
+        resolve();
+      }, ms);
+      pendingWait.current = { resolve, timer };
+    });
+
+  // Push rate/pitch to the engine as soon as they change, so adjusting them
+  // mid-playback takes effect from the next segment instead of needing a
+  // stop/start. The engine applies these per utterance, so the one currently
+  // being spoken finishes at its original setting.
+  useEffect(() => {
+    Tts.setDefaultRate(RATES[speed]);
+    Tts.setDefaultPitch(PITCHES[pitch]);
+  }, [speed, pitch]);
 
   const playlist = () => words.filter((w) => selected.has(w.id));
+
+  // Last content pushed to the notification, so pausing can redraw it with a
+  // Play button instead of losing the word it was sitting on.
+  const notificationContent = useRef<{ title: string; body: string } | null>(null);
 
   const playFrom = async (start: number) => {
     const token = ++playToken.current;
     const list = playlist();
     if (list.length === 0) return;
+    // Asked on first play rather than at launch, so the prompt arrives with
+    // the context that explains it.
+    await requestPlaybackNotificationPermission();
+    if (token !== playToken.current) return;
     Tts.setDefaultRate(RATES[speed]);
     Tts.setDefaultPitch(PITCHES[pitch]);
     setIsPlaying(true);
@@ -109,6 +176,11 @@ export default function TravelModeScreen() {
       indexRef.current = i;
       const w = list[i];
       setCurrentId(w.id);
+      notificationContent.current = {
+        title: w.word,
+        body: `Word ${i + 1} of ${list.length}`,
+      };
+      void showPlaybackNotification({ ...notificationContent.current, isPlaying: true });
       // Only the fields enabled in Settings, with a short pause between each.
       const segments = segmentsFor(w, fieldsRef.current);
       for (let s = 0; s < segments.length; s++) {
@@ -133,14 +205,33 @@ export default function TravelModeScreen() {
       indexRef.current = 0;
       setIsPlaying(false);
       setCurrentId(null);
+      notificationContent.current = null;
+      void hidePlaybackNotification();
     }
   };
 
+  /** Pauses: the playlist position is kept so play resumes where it left off. */
   const stop = () => {
     playToken.current++;
     Tts.stop();
     setIsPlaying(false);
     setCurrentId(null);
+    // Keep the notification up showing a Play button, so playback can be
+    // resumed from the shade without reopening the app.
+    if (notificationContent.current) {
+      void showPlaybackNotification({ ...notificationContent.current, isPlaying: false });
+    }
+  };
+
+  /** Ends the session outright and tears the foreground service down. */
+  const stopPlayback = () => {
+    playToken.current++;
+    Tts.stop();
+    setIsPlaying(false);
+    setCurrentId(null);
+    indexRef.current = 0;
+    notificationContent.current = null;
+    void hidePlaybackNotification();
   };
 
   const togglePlay = () => {
@@ -155,6 +246,24 @@ export default function TravelModeScreen() {
     Tts.stop();
     playFrom(next >= playlist().length ? 0 : next);
   };
+
+  // The notification subscription is registered once, so route presses through
+  // a ref to reach the current handlers rather than the mount-time closures.
+  const controls = useRef({ togglePlay, skip, stopPlayback });
+  controls.current = { togglePlay, skip, stopPlayback };
+
+  useEffect(() => {
+    const unsubscribe = onPlaybackAction((action) => {
+      if (action === 'toggle') controls.current.togglePlay();
+      else if (action === 'next') controls.current.skip();
+      else controls.current.stopPlayback();
+    });
+    return () => {
+      unsubscribe();
+      // Leaving the screen must not strand a foreground service.
+      void hidePlaybackNotification();
+    };
+  }, []);
 
   const toggleWord = (id: string) => {
     setSelected((prev) => {
@@ -244,15 +353,10 @@ export default function TravelModeScreen() {
                 .map((f) => f.label.toLowerCase())
                 .join(' · ')}`}
         </Text>
-        <View style={styles.controlLabels}>
+        <View style={styles.controlRow}>
           <Text variant="labelMedium" style={styles.controlLabel}>
             Speed
           </Text>
-          <Text variant="labelMedium" style={styles.controlLabel}>
-            Pitch
-          </Text>
-        </View>
-        <View style={styles.controlRow}>
           <SegmentedButtons
             value={speed}
             onValueChange={setSpeed}
@@ -264,6 +368,11 @@ export default function TravelModeScreen() {
               { value: '1.25', label: '1.25x', showSelectedCheck: false },
             ]}
           />
+        </View>
+        <View style={styles.controlRow}>
+          <Text variant="labelMedium" style={styles.controlLabel}>
+            Pitch
+          </Text>
           <SegmentedButtons
             value={pitch}
             onValueChange={setPitch}
@@ -279,6 +388,9 @@ export default function TravelModeScreen() {
         <View style={styles.buttonsRow}>
           <Pressable
             onPress={() => setLoop((l) => !l)}
+            accessibilityRole="button"
+            accessibilityLabel="Loop playlist"
+            accessibilityState={{ selected: loop }}
             style={[styles.roundBtn, loop && styles.roundBtnActive]}
           >
             <Repeat size={22} color={loop ? '#FFFFFF' : colors.primary} />
@@ -286,6 +398,8 @@ export default function TravelModeScreen() {
           <Pressable
             onPress={togglePlay}
             disabled={travelFields.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
             style={[styles.playBtn, travelFields.length === 0 && styles.playBtnDisabled]}
           >
             {isPlaying ? (
@@ -294,7 +408,12 @@ export default function TravelModeScreen() {
               <Play size={30} color="#FFFFFF" fill="#FFFFFF" />
             )}
           </Pressable>
-          <Pressable onPress={skip} style={styles.roundBtn}>
+          <Pressable
+            onPress={skip}
+            accessibilityRole="button"
+            accessibilityLabel="Skip to next word"
+            style={styles.roundBtn}
+          >
             <SkipForward size={22} color={colors.primary} />
           </Pressable>
         </View>
@@ -337,9 +456,8 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
     elevation: 8,
   },
   fieldSummary: { color: colors.muted, textAlign: 'center', marginBottom: 10 },
-  controlLabels: { flexDirection: 'row', gap: 8 },
-  controlLabel: { flex: 1, color: colors.muted, marginBottom: 4 },
-  controlRow: { flexDirection: 'row', gap: 8 },
+  controlLabel: { width: 48, color: colors.muted },
+  controlRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   buttonsRow: {
     flexDirection: 'row',
     justifyContent: 'center',

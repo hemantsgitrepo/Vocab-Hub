@@ -4,6 +4,7 @@
 - **Framework:** React Native with Expo (Managed Workflow)
 - **Database:** WatermelonDB (Offline-first, reactive persistent storage)
 - **TTS:** react-native-tts (Offline native text-to-speech)
+- **Background audio:** `react-native-notify-kit` — Android `mediaPlayback` foreground service + notification transport controls for Travel Mode (`src/lib/playbackNotification.ts`). `android/` is gitignored/generated, so native config goes in `app.json` plugins only.
 - **Audio SFX:** expo-audio (native SFX playback for the Game Arcade, `src/lib/sfx.ts`)
 - **APIs (all free & keyless):** Free Dictionary API (primary), Wiktionary MediaWiki `action=parse` (etymology + curated syn/ant), Datamuse (syn/ant backfill) — all in `src/api/dictionary.ts`
 - **Styling & UI:** React Native Paper + Lucide Icons + Expo Linear Gradient

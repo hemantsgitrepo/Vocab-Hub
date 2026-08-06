@@ -42,7 +42,19 @@
         }
       ],
       "expo-sharing",
-      "expo-audio"
+      "expo-audio",
+      [
+        "react-native-notify-kit",
+        {
+          "android": {
+            "foregroundService": {
+              "types": [
+                "mediaPlayback"
+              ]
+            }
+          }
+        }
+      ]
     ]
   }
 }

@@ -17,10 +17,13 @@
 | UI kit | React Native Paper (MD3) + Lucide icons + `expo-linear-gradient` + `react-native-svg` | Paper ^5.15.3, SVG 15.15.4 |
 | Speech | `react-native-tts` — on-device, offline | ^4.1.1 |
 | Audio SFX | `expo-audio` | ~57.0.3 |
+| Background playback | `react-native-notify-kit` — foreground service + notification transport controls for Travel Mode (maintained Notifee fork; Notifee itself was archived April 2026) | ^10.5.0 |
 | File I/O | `expo-file-system`, `expo-sharing`, `expo-document-picker` | ~57.x |
 | Animation | React Native's built-in `Animated` API — **no `react-native-reanimated`** | — |
 
-**Expo plugins:** `@morrowdigital/watermelondb-expo-plugin`, `expo-build-properties` (Android `pickFirst: **/libc++_shared.so`), `expo-sharing`, `expo-audio`.
+**Expo plugins:** `@morrowdigital/watermelondb-expo-plugin`, `expo-build-properties` (Android `pickFirst: **/libc++_shared.so`), `expo-sharing`, `expo-audio`, `react-native-notify-kit` (Android `foregroundService.types: ["mediaPlayback"]`).
+
+`android/` is **gitignored and generated** — all native configuration must be expressed as Expo config plugins in `app.json`, never hand-edited into the manifest, or it is lost on the next `expo prebuild`.
 
 Two deliberate constraints: everything runs **offline on-device** (the only network call is the dictionary lookup), and **no paid APIs or services** are used anywhere.
 
@@ -93,7 +96,9 @@ No extra tables; all preferences and progression live here as JSON.
 
 **Word management** — Add with multi-source auto-fill (see §2), which badges each populated field with its origin and clears the badge once you edit it; duplicate detection is case-insensitive; delete requires confirmation. **CSV import/export** matched by *header name* (order-independent) with a downloadable template and an RFC4180 parser that handles quoted fields, embedded newlines and Excel BOM. Columns: Word, Pronunciation, Part of Speech, Word Forms, Meaning, Synonym 1/2, Antonym 1/2, Example Sentence, Word Origin, Layman Explanation, Difficulty, Audio URL.
 
-**Travel Mode** — hands-free continuous playback. Speaks fields in canonical order (word → meaning → synonyms → antonyms → example → layman), configurable per field; ~600 ms between fields, ~1200 ms between words. Speed 0.8×/1×/1.25×, pitch low/mid/high, loop and skip. Fully offline; iOS declares the `audio` background mode.
+**Travel Mode** — hands-free continuous playback. Speaks fields in canonical order (word → meaning → synonyms → antonyms → example → layman), configurable per field; ~600 ms between fields, ~1200 ms between words (pauses apply only while the app is foregrounded — RN timers freeze when the Android activity pauses, so with the screen locked playback chains gaplessly off `tts-finish` events instead of stalling). Speed 0.8×/1×/1.25×, applied from the next segment when changed mid-playback; pitch low/mid/high; loop and skip. A failed utterance (`tts-error`, or a rejected `speak()`) skips that segment rather than stalling the playlist.
+
+*Background playback (Android):* starting playback starts a `mediaPlayback` foreground service (`src/lib/playbackNotification.ts`) so the OS cannot freeze the JS loop or kill the process mid-session — this matters most on aggressive OEMs like Samsung. It shows an ongoing, silent (`IMPORTANCE_LOW`), `PUBLIC`-visibility notification carrying the current word and playlist position plus **Pause/Play · Next · Stop** actions, which are usable from the lock screen. Pausing keeps the notification so playback can resume from the shade; Stop, playlist end, and leaving the screen all tear the service down. `POST_NOTIFICATIONS` is requested on first play, not at launch. There is no true MediaSession widget — `AndroidStyle` has no `MEDIA` option and no RN library bridges TTS to MediaSession; that would need custom native code. Fully offline; iOS relies on the `audio` background mode declared in `app.json` instead.
 
 **Quiz Arena** — three modes (Flashcards with self-grading, Meanings 4-way multiple choice, Fill-the-blank from the word's own example). Source window: all time / past 7 / past 30 days. Optional synonym- or antonym-prompting. Scored as a percentage, with confetti at ≥80%.
 
