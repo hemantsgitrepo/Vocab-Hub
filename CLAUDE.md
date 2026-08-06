@@ -8,6 +8,7 @@
 - **Audio SFX:** expo-audio (native SFX playback for the Game Arcade, `src/lib/sfx.ts`)
 - **APIs (all free & keyless):** Free Dictionary API (primary), Wiktionary MediaWiki `action=parse` (etymology + curated syn/ant), Datamuse (syn/ant backfill) — all in `src/api/dictionary.ts`
 - **Styling & UI:** React Native Paper + Lucide Icons + Expo Linear Gradient
+- **Legal docs:** `react-native-markdown-display` renders the Terms/Privacy viewer (`src/screens/legal/`). It needs the `punycode` package installed explicitly — its `markdown-it@10` dependency requires that Node builtin, which React Native does not ship.
 
 ## App Requirements
 1. **Daily Practice Goal:** Default is 5 words/day, but MUST be user-configurable in settings.
@@ -25,6 +26,7 @@
 5. **Word Management:** Delete-word with confirmation warning; CSV import/export (bulk add/backup) matched by header name, with a downloadable template.
 6. **Game Arcade:** 5 vocabulary mini-games (Vocab Millionaire, Memory Match, Scrabble, Crossword, Spelling Bee — `src/screens/games/`) that unlock progressively as the user's word count grows (thresholds in `src/lib/games.ts`). Each has SFX (tap/success/error/fanfare) toggleable in Settings.
 7. **Streak System:** Forgiving daily-goal streak (`src/lib/streakEngine.ts`) with a 2-hour post-midnight grace period, 1 free freeze per 10-day run, a 48-hour repair challenge on an unprotected break, and milestone celebrations at 7/14/30/50/100 days. Day completion is always derived from `created_at`; only the freeze/repair/milestone overlay is persisted (`streak.state` in `src/db/settings.ts`).
+8. **Legal & Privacy:** Terms of Service and Privacy Policy viewable in-app from Settings → About & Legal (`src/screens/legal/LegalViewerScreen.tsx`). The text lives in `src/screens/legal/policies.ts` and mirrors `docs/legal/*.md` — **edit both**, as Metro cannot bundle `.md` as source.
 
 ## Code Standards
 - Use TypeScript for strict type checking.

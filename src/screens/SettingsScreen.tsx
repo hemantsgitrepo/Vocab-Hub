@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import {
   Brain,
+  ChevronRight,
   Download,
   ExternalLink,
   FileText,
@@ -19,6 +20,7 @@ import {
   Moon,
   MonitorSmartphone,
   Plus,
+  Scale,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -37,6 +39,8 @@ import { fetchAllWords } from '../db/words';
 import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
+import LegalViewerScreen from './legal/LegalViewerScreen';
+import { POLICIES, PolicyId } from './legal/policies';
 
 const MIN_GOAL = 1;
 const MAX_GOAL = 50;
@@ -146,6 +150,7 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState<'export' | 'template' | 'import' | null>(null);
   const [snack, setSnack] = useState('');
   const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
+  const [legalDoc, setLegalDoc] = useState<PolicyId | null>(null);
 
   const shareCsv = async (fileName: string, content: string, dialogTitle: string) => {
     const file = new File(Paths.cache, fileName);
@@ -482,6 +487,49 @@ export default function SettingsScreen() {
 
         <Card style={styles.card}>
           <Card.Content>
+            <View style={styles.goalHeader}>
+              <Scale size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                About &amp; Legal
+              </Text>
+            </View>
+
+            {POLICIES.map((doc, i) => {
+              const RowIcon = doc.id === 'terms' ? FileText : ShieldCheck;
+              return (
+                <React.Fragment key={doc.id}>
+                  {i > 0 && <Divider style={styles.legalDivider} />}
+                  <Pressable
+                    onPress={() => setLegalDoc(doc.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={doc.title}
+                    accessibilityHint={doc.subtitle}
+                    style={({ pressed }) => [
+                      styles.legalRow,
+                      pressed && styles.legalRowPressed,
+                    ]}
+                  >
+                    <View style={styles.legalIcon}>
+                      <RowIcon size={20} color={colors.primary} />
+                    </View>
+                    <View style={styles.legalText}>
+                      <Text variant="bodyLarge" style={styles.featureTitle}>
+                        {doc.title}
+                      </Text>
+                      <Text variant="bodySmall" style={styles.hint}>
+                        {doc.subtitle}
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color={colors.muted} />
+                  </Pressable>
+                </React.Fragment>
+              );
+            })}
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.card}>
+          <Card.Content>
             <Text variant="titleMedium" style={styles.cardTitle}>
               Developed &amp; Powered By
             </Text>
@@ -535,6 +583,12 @@ export default function SettingsScreen() {
       <Snackbar visible={!!snack} onDismiss={() => setSnack('')} duration={3000}>
         {snack}
       </Snackbar>
+
+      <LegalViewerScreen
+        visible={legalDoc !== null}
+        initial={legalDoc ?? 'terms'}
+        onClose={() => setLegalDoc(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -546,6 +600,24 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   card: { backgroundColor: colors.surface, marginBottom: 16 },
   goalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   cardTitle: { color: colors.text, fontWeight: '600' },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  legalRowPressed: { backgroundColor: colors.surfaceAlt },
+  legalIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legalText: { flex: 1 },
+  legalDivider: { backgroundColor: colors.border },
   hint: { color: colors.muted, lineHeight: 20 },
   stepper: {
     flexDirection: 'row',

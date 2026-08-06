@@ -20,6 +20,7 @@
 | Background playback | `react-native-notify-kit` — foreground service + notification transport controls for Travel Mode (maintained Notifee fork; Notifee itself was archived April 2026) | ^10.5.0 |
 | File I/O | `expo-file-system`, `expo-sharing`, `expo-document-picker` | ~57.x |
 | Animation | React Native's built-in `Animated` API — **no `react-native-reanimated`** | — |
+| Markdown | `react-native-markdown-display` — renders the in-app Terms/Privacy viewer. Requires an explicit `punycode` install: its `markdown-it@10` dependency requires that Node builtin, which RN does not ship | ^7.0.2 |
 
 **Expo plugins:** `@morrowdigital/watermelondb-expo-plugin`, `expo-build-properties` (Android `pickFirst: **/libc++_shared.so`), `expo-sharing`, `expo-audio`, `react-native-notify-kit` (Android `foregroundService.types: ["mediaPlayback"]`).
 
@@ -124,6 +125,8 @@ Both surfaces read the streak engine, so the 2am grace boundary can't make them 
 *Design note:* day completion is always **derived** from `created_at`, so the streak can never drift from the collection; only non-derivable state (freezes, protected days, repair, milestones) is persisted. This is why no schema migration was needed for it.
 
 **Onboarding & discovery** — 3-slide first-launch carousel; contextual "How it works" bottom sheets on Travel Mode, the Quiz hub and all five games; inviting empty states on Dashboard and Travel Mode; milestone unlock celebrations for games.
+
+**Legal & Privacy** (`src/screens/legal/`) — Settings → *About & Legal* lists Terms of Service and Privacy Policy as tappable rows; either opens a full-screen viewer with a segmented Terms/Privacy toggle, themed markdown rendering (headings, lists, blockquotes, inline code, rules) and links opened through `Linking.openURL()`. Document text lives in `policies.ts` and **mirrors `docs/legal/TERMS_OF_SERVICE.md` / `PRIVACY_POLICY.md`** — Metro cannot bundle `.md` as source, so both copies must be edited together; the `.md` files stay in the repo because the Privacy Policy itself promises updates are documented there.
 
 **Theming & UX** — 3-way theme (`light`/`dark`/`system`) with a pastel palette (light: warm cream `#FAF7F1`; dark: charcoal-slate `#14161D`). Custom `AppDialogs` layer (`confirm()` / `toast()`) fully replaces `Alert.alert`. SFX and haptics on interactive controls, toggleable in Settings.
 
