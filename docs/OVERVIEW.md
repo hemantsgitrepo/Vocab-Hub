@@ -143,3 +143,11 @@ Both surfaces read the streak engine, so the 2am grace boundary can't make them 
 ## 6. Testing posture
 
 No Jest or CI. Verification is manual on-device walkthrough plus direct SQLite inspection, and `adb logcat` grepped for `AudioFlinger`/`MediaSession` transitions to confirm real audio playback. The streak engine (`src/lib/streakEngine.ts`) has scenario coverage (grace period, freeze earn/spend, repair completion/expiry, idempotency, milestones, calendar classification) exercised ad hoc via a compiled script — there is no committed Jest suite in the repo yet.
+
+### Seeding a test device
+
+`./scripts/seed-device.sh` restores `test-data/vocab-hub-seed.db` (232 words, all five arcade games unlocked, onboarding already dismissed) straight into the app sandbox, replacing the CSV import walkthrough. Because day completion is derived from `created_at`, the script shifts every timestamp forward so the newest word lands at "now" — the restored collection reads as added today rather than as a stale snapshot; pass `--keep-timestamps` to preserve the captured dates instead.
+
+The snapshot only restores onto a **debug** build: pushing into `/data/data/<pkg>/` requires `run-as`, which the OS refuses for a non-debuggable (release) package. Note the database lives at the app-data root (`watermelon.db`), not under `databases/`, and its `-wal`/`-shm` siblings must be removed when replacing it or the old WAL replays over the restored file.
+
+`node scripts/build-seed-db.mjs` regenerates the snapshot from `test-data/vocab-hub-seed-data.csv` — needed when the CSV changes or a schema migration bumps `PRAGMA user_version` past the snapshot's version (v3). Its output has been verified byte-identical to a database the app itself wrote, across every column of all 232 rows.
