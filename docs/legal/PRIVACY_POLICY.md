@@ -44,11 +44,10 @@ Vocab Hub can be used in full without an account. If you choose to sign in:
 * Your personal dictionary, quiz scores, streak history, and preferences are **not** uploaded as part of signing in — they remain on your device.
 * Signing out removes the session from your device.
 
-### D. Outbound Email Communications (Optional)
-Only if you supply a notification address and enable notifications in Settings:
-* Your email address is stored locally on your device, and each pending message waits in a local outbox until it can be delivered.
-* Lifecycle emails (welcome, milestone celebrations, streak alerts) are sent by a server-side **Supabase Edge Function**, which relays them over authenticated Hostinger SMTP (`smtp.hostinger.com`, SSL/port 465). Mail-server credentials exist only on that server and are never shipped inside the Application.
-* Turning notifications off in Settings stops all outbound email.
+### D. Email Notifications (Optional)
+Settings lets you save a notification address and turn notifications on:
+* That address is stored **locally on your device**. Saving it does not upload it.
+* **This version of the Application sends no lifecycle email.** The delivery path exists but is dormant: were it enabled, messages would wait in a local outbox and be dispatched by a server-side **Supabase Edge Function** relaying over authenticated Hostinger SMTP (`smtp.hostinger.com`, SSL/port 465), with mail-server credentials held only on that server and never shipped inside the Application. This section will be updated before any such email is sent.
 * We do not sell or share your email address with third-party data brokers or advertisers.
 
 ---
