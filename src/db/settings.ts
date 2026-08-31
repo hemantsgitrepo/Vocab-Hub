@@ -185,6 +185,50 @@ export async function setStreakStateRaw(state: unknown): Promise<void> {
   await database.localStorage.set(STREAK_STATE_KEY, JSON.stringify(state));
 }
 
+/**
+ * Non-bypassable first-launch consent gate (Terms of Service + Privacy
+ * Policy). Distinct from `settings.onboardingComplete` — consent must be
+ * shown and accepted before the feature-tour carousel, not after it.
+ */
+const CONSENT_KEY = 'settings.consentAccepted';
+
+export async function getConsentAccepted(): Promise<boolean> {
+  const value = await database.localStorage.get<boolean>(CONSENT_KEY);
+  return value ?? false;
+}
+
+export async function setConsentAccepted(accepted: boolean): Promise<void> {
+  await database.localStorage.set(CONSENT_KEY, accepted);
+}
+
+/**
+ * User-configurable notification email + opt-in toggle. The address is
+ * independent of any auth identity — there is none yet — so it's just a
+ * plain preference until an email-sending backend exists to act on it.
+ */
+export const DEFAULT_NOTIFY_ENABLED = false;
+
+const NOTIFY_EMAIL_KEY = 'settings.notifyEmail';
+const NOTIFY_ENABLED_KEY = 'settings.notifyEnabled';
+
+export async function getNotifyEmail(): Promise<string> {
+  const value = await database.localStorage.get<string>(NOTIFY_EMAIL_KEY);
+  return value ?? '';
+}
+
+export async function setNotifyEmail(email: string): Promise<void> {
+  await database.localStorage.set(NOTIFY_EMAIL_KEY, email.trim());
+}
+
+export async function getNotifyEnabled(): Promise<boolean> {
+  const value = await database.localStorage.get<boolean>(NOTIFY_ENABLED_KEY);
+  return value ?? DEFAULT_NOTIFY_ENABLED;
+}
+
+export async function setNotifyEnabled(enabled: boolean): Promise<void> {
+  await database.localStorage.set(NOTIFY_ENABLED_KEY, enabled);
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const DEFAULT_THEME_MODE: ThemeMode = 'system';

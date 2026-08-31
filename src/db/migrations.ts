@@ -1,4 +1,4 @@
-import { addColumns, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations';
+import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations';
 
 export default schemaMigrations({
   migrations: [
@@ -20,6 +20,25 @@ export default schemaMigrations({
         addColumns({
           table: 'words',
           columns: [{ name: 'word_origin', type: 'string', isOptional: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 4,
+      steps: [
+        createTable({
+          name: 'email_queue',
+          columns: [
+            { name: 'to_email', type: 'string' },
+            { name: 'subject', type: 'string' },
+            { name: 'html', type: 'string' },
+            { name: 'email_type', type: 'string', isIndexed: true },
+            { name: 'status', type: 'string', isIndexed: true },
+            { name: 'attempts', type: 'number' },
+            { name: 'last_error', type: 'string', isOptional: true },
+            { name: 'created_at', type: 'number', isIndexed: true },
+            { name: 'sent_at', type: 'number', isOptional: true },
+          ],
         }),
       ],
     },

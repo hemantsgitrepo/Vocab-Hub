@@ -13,7 +13,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, Dialog, Divider, Portal, Snackbar, Switch, Text } from 'react-native-paper';
+import {
+  Button,
+  Card,
+  Dialog,
+  Divider,
+  Portal,
+  Snackbar,
+  Switch,
+  Text,
+  TextInput,
+} from 'react-native-paper';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
@@ -28,6 +38,9 @@ import {
   Globe,
   Headphones,
   Info,
+  LogIn,
+  LogOut,
+  Mail,
   Minus,
   Moon,
   MonitorSmartphone,
@@ -36,24 +49,34 @@ import {
   Sun,
   Target,
   Upload,
+  UserCircle,
 } from 'lucide-react-native';
 import {
   useDailyGoal,
   useGameSounds,
+  useNotifyEmail,
+  useNotifyEnabled,
   useQuizAntonyms,
   useQuizSynonyms,
+  useSession,
   useTravelFields,
 } from '../hooks';
 import { TRAVEL_FIELDS, ThemeMode, TravelField } from '../db/settings';
 import { fetchAllWords } from '../db/words';
 import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
+import { signOut } from '../lib/auth';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 import LegalViewerScreen from './legal/LegalViewerScreen';
 import { POLICIES, PolicyId } from './legal/policies';
+import SignInScreen from './auth/SignInScreen';
 
 const MIN_GOAL = 1;
 const MAX_GOAL = 50;
+
+/** Loose sanity check only — real validation happens server-side once an
+ * email backend exists. This just stops obviously-broken input up front. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Short, consistent easing shared by every expand/collapse on this screen.
@@ -334,6 +357,11 @@ export default function SettingsScreen() {
   const [quizSynonyms, setQuizSynonyms] = useQuizSynonyms();
   const [quizAntonyms, setQuizAntonyms] = useQuizAntonyms();
   const [gameSounds, setGameSoundsOn] = useGameSounds();
+  const [notifyEmail, setNotifyEmail] = useNotifyEmail();
+  const [notifyEnabled, setNotifyEnabledOn] = useNotifyEnabled();
+  const { session } = useSession();
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [busy, setBusy] = useState<'export' | 'template' | 'import' | null>(null);
   const [snack, setSnack] = useState('');
   const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
@@ -414,6 +442,27 @@ export default function SettingsScreen() {
     }
   };
 
+  const doSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+      setSnack("You're signed out.");
+    } catch (e) {
+      console.error('SIGN_OUT_ERROR', e);
+      setSnack('Something went wrong while signing out.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
+  const toggleNotify = () => {
+    if (!notifyEnabled && !EMAIL_RE.test(notifyEmail.trim())) {
+      setSnack('Enter a valid email address first.');
+      return;
+    }
+    setNotifyEnabledOn(!notifyEnabled);
+  };
+
   const toggleField = (key: TravelField) => {
     const next = travelFields.includes(key)
       ? travelFields.filter((f) => f !== key)
@@ -432,6 +481,45 @@ export default function SettingsScreen() {
         <Text variant="headlineMedium" style={styles.title}>
           Settings
         </Text>
+
+        <SectionLabel styles={styles}>Account</SectionLabel>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
+              <UserCircle size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                {session ? 'Signed in' : 'Not signed in'}
+              </Text>
+            </View>
+            <Text variant="bodyMedium" style={styles.hint}>
+              {session
+                ? `Signed in as ${session.user.email ?? session.user.id}. Your words stay on this device either way — this only affects account-based features.`
+                : 'Optional. Your words and progress stay on this device with or without an account.'}
+            </Text>
+            {session ? (
+              <Button
+                mode="outlined"
+                icon={({ size, color }) => <LogOut size={size} color={color} />}
+                onPress={doSignOut}
+                loading={signingOut}
+                disabled={signingOut}
+                style={styles.dataBtn}
+              >
+                Sign out
+              </Button>
+            ) : (
+              <Button
+                mode="contained-tonal"
+                icon={({ size, color }) => <LogIn size={size} color={color} />}
+                onPress={() => setSignInOpen(true)}
+                style={styles.dataBtn}
+              >
+                Sign in
+              </Button>
+            )}
+          </Card.Content>
+        </Card>
 
         <SectionLabel styles={styles}>Appearance</SectionLabel>
 
@@ -591,6 +679,41 @@ export default function SettingsScreen() {
           </Card.Content>
         </Card>
 
+        <SectionLabel styles={styles}>Notifications</SectionLabel>
+
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.goalHeader}>
+              <Mail size={22} color={colors.primary} />
+              <Text variant="titleMedium" style={styles.cardTitle}>
+                Email notifications
+              </Text>
+            </View>
+            <Text variant="bodyMedium" style={styles.hint}>
+              Where milestone and streak updates would be sent. No email
+              service is connected yet — this only saves the address for when
+              one is.
+            </Text>
+            <TextInput
+              mode="outlined"
+              label="Notification email"
+              value={notifyEmail}
+              onChangeText={setNotifyEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              style={styles.emailInput}
+            />
+            <SwitchRow
+              label="Enable email notifications"
+              hint="Requires a valid email above."
+              value={notifyEnabled}
+              onToggle={toggleNotify}
+              styles={styles}
+            />
+          </Card.Content>
+        </Card>
+
         <SectionLabel styles={styles}>Your data</SectionLabel>
 
         <Card style={styles.card}>
@@ -735,6 +858,8 @@ export default function SettingsScreen() {
         {snack}
       </Snackbar>
 
+      <SignInScreen visible={signInOpen} onClose={() => setSignInOpen(false)} />
+
       <LegalViewerScreen
         visible={legalDoc !== null}
         initial={legalDoc ?? 'terms'}
@@ -857,6 +982,7 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   partnerLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   partnerLinkText: { color: colors.primary, fontWeight: '600' },
   dataBtn: { marginTop: 12 },
+  emailInput: { marginTop: 12 },
   dialogTitle: { color: colors.text, textAlign: 'center' },
   dialogScrollArea: { maxHeight: 340, paddingHorizontal: 0 },
   dialogScrollContent: { paddingHorizontal: 24, paddingBottom: 8 },

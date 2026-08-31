@@ -4,6 +4,7 @@
     "slug": "AptitudeWords",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "vocabhub",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
@@ -43,6 +44,7 @@
       ],
       "expo-sharing",
       "expo-audio",
+      "expo-apple-authentication",
       [
         "react-native-notify-kit",
         {
@@ -54,7 +56,8 @@
             }
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

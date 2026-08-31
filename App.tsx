@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
@@ -9,27 +9,48 @@ import { View } from 'react-native';
 import { ThemeProvider, useAppTheme } from './src/ThemeContext';
 import { DialogProvider } from './src/ui/AppDialogs';
 import { UnlockProvider } from './src/ui/UnlockProvider';
-import { useOnboarding } from './src/hooks';
+import { useConsent, useOnboarding } from './src/hooks';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddWordScreen from './src/screens/AddWordScreen';
 import TravelModeScreen from './src/screens/TravelModeScreen';
 import QuizScreen from './src/screens/QuizScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import ConsentScreen from './src/screens/ConsentScreen';
+import { startEmailQueue } from './src/services/emailService';
 
 const Tab = createBottomTabNavigator();
 
 function AppShell() {
   const { colors, paperTheme, navTheme, isDark } = useAppTheme();
+  const [consented, giveConsent] = useConsent();
   const [onboarded, completeOnboarding] = useOnboarding();
 
-  // Hold on a themed blank until the stored flag resolves, so returning users
-  // never see the carousel flash before it's dismissed.
-  if (onboarded === null) {
+  // Drains any emails queued while offline, and keeps retrying on reconnect.
+  // Starting this doesn't depend on consent/onboarding — it's a passive
+  // background drain, not a new prompt or data collection surface.
+  useEffect(() => {
+    startEmailQueue();
+  }, []);
+
+  // Hold on a themed blank until the stored flags resolve, so returning users
+  // never see the consent gate or carousel flash before they're dismissed.
+  if (consented === null || onboarded === null) {
     return (
       <PaperProvider theme={paperTheme}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <View style={{ flex: 1, backgroundColor: colors.background }} />
+      </PaperProvider>
+    );
+  }
+
+  // Non-bypassable: Terms + Privacy must be accepted before onboarding or the
+  // app itself is reachable.
+  if (!consented) {
+    return (
+      <PaperProvider theme={paperTheme}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ConsentScreen onAccept={giveConsent} />
       </PaperProvider>
     );
   }
