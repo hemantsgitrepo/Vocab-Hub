@@ -30,7 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files (Supabase URL/keys live here — never commit real values)
+.env
+.env.local
 .env*.local
 
 # typescript
@@ -39,3 +41,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Supabase CLI local cache
+supabase/.temp/

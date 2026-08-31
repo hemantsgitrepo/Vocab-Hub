@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import type { Session } from '@supabase/supabase-js';
 import Word from './db/models/Word';
 import { observeAllWords, observeWordCount } from './db/words';
+import { supabase } from './lib/supabaseClient';
 import { GAMES, GameKey } from './lib/games';
 import {
   DEFAULT_DAILY_GOAL,
   DEFAULT_GAME_SOUNDS,
+  DEFAULT_NOTIFY_ENABLED,
   DEFAULT_QUIZ_ANTONYMS,
   DEFAULT_QUIZ_SYNONYMS,
   DEFAULT_TRAVEL_FIELDS,
   TravelField,
+  getConsentAccepted,
   getDailyGoal,
   getGameSounds,
+  getNotifyEmail,
+  getNotifyEnabled,
   getOnboardingComplete,
   getStreakStateRaw,
   setStreakStateRaw,
   getQuizAntonyms,
   getQuizSynonyms,
   getTravelFields,
+  setConsentAccepted,
   setDailyGoal,
   setGameSounds,
+  setNotifyEmail,
+  setNotifyEnabled,
   setOnboardingComplete,
   setQuizAntonyms,
   setQuizSynonyms,
@@ -209,6 +218,75 @@ export function useOnboarding(): [boolean | null, () => void] {
     setOnboardingComplete(true);
   };
   return [done, complete];
+}
+
+/**
+ * The current Supabase auth session, if any — `null` means signed out (still
+ * a fully valid, fully usable state; the app has no login requirement).
+ * `loading` covers only the initial check, not later sign-in/out calls.
+ */
+export function useSession(): { session: Session | null; loading: boolean } {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  return { session, loading };
+}
+
+/**
+ * Non-bypassable consent gate (Terms + Privacy), shown before onboarding.
+ * `null` while the stored flag is still loading, so it never flashes.
+ */
+export function useConsent(): [boolean | null, () => void] {
+  const [accepted, setAccepted] = useState<boolean | null>(null);
+  useEffect(() => {
+    getConsentAccepted().then(setAccepted);
+  }, []);
+  const accept = () => {
+    setAccepted(true);
+    setConsentAccepted(true);
+  };
+  return [accepted, accept];
+}
+
+/** User-configurable notification email address. No backend acts on this yet. */
+export function useNotifyEmail(): [string, (email: string) => void] {
+  const [email, setEmail] = useState('');
+  useFocusEffect(
+    useCallback(() => {
+      getNotifyEmail().then(setEmail);
+    }, [])
+  );
+  const update = (next: string) => {
+    setEmail(next);
+    setNotifyEmail(next);
+  };
+  return [email, update];
+}
+
+/** Whether the user has opted into (future) email notifications. */
+export function useNotifyEnabled(): [boolean, (v: boolean) => void] {
+  const [enabled, setEnabled] = useState(DEFAULT_NOTIFY_ENABLED);
+  useFocusEffect(
+    useCallback(() => {
+      getNotifyEnabled().then(setEnabled);
+    }, [])
+  );
+  const update = (next: boolean) => {
+    setEnabled(next);
+    setNotifyEnabled(next);
+  };
+  return [enabled, update];
 }
 
 /** Daily goal, re-read whenever the screen gains focus so edits in Settings propagate. */

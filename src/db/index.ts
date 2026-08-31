@@ -3,6 +3,7 @@ import SQLiteAdapter from '@nozbe/watermelondb/adapters/sqlite';
 import { schema } from './schema';
 import migrations from './migrations';
 import Word from './models/Word';
+import EmailQueueItem from './models/EmailQueueItem';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -15,7 +16,8 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [Word],
+  modelClasses: [Word, EmailQueueItem],
 });
 
 export const wordsCollection = database.get<Word>('words');
+export const emailQueueCollection = database.get<EmailQueueItem>('email_queue');

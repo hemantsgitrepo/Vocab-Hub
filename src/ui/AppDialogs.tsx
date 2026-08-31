@@ -66,6 +66,10 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
 
   const dialogAnim = useMemo(() => new Animated.Value(0), []);
   const toastAnim = useMemo(() => new Animated.Value(0), []);
+  // Extra kind-specific flourish layered on top of the toast's entrance:
+  // error toasts get a horizontal shake, success toasts get an icon "pop".
+  const toastShake = useMemo(() => new Animated.Value(0), []);
+  const toastIconPop = useMemo(() => new Animated.Value(1), []);
 
   const confirm = useCallback(
     (opts: ConfirmOptions) =>
@@ -106,12 +110,54 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
       };
       setToastItem(item);
       toastAnim.setValue(0);
+      toastShake.setValue(0);
+      toastIconPop.setValue(1);
       Animated.spring(toastAnim, {
         toValue: 1,
         friction: 8,
         tension: 80,
         useNativeDriver: true,
-      }).start();
+      }).start(() => {
+        if (item.kind === 'error') {
+          Animated.sequence([
+            Animated.timing(toastShake, {
+              toValue: 1,
+              duration: 45,
+              useNativeDriver: true,
+            }),
+            Animated.timing(toastShake, {
+              toValue: -1,
+              duration: 90,
+              useNativeDriver: true,
+            }),
+            Animated.timing(toastShake, {
+              toValue: 0.6,
+              duration: 90,
+              useNativeDriver: true,
+            }),
+            Animated.timing(toastShake, {
+              toValue: 0,
+              duration: 70,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        } else if (item.kind === 'success') {
+          Animated.sequence([
+            Animated.timing(toastIconPop, {
+              toValue: 1.35,
+              duration: 130,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.spring(toastIconPop, {
+              toValue: 1,
+              friction: 4,
+              tension: 140,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
+      });
       toastTimer.current = setTimeout(() => {
         Animated.timing(toastAnim, {
           toValue: 0,
@@ -123,7 +169,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
         });
       }, opts?.duration ?? 2600);
     },
-    [toastAnim]
+    [toastAnim, toastShake, toastIconPop]
   );
 
   const value = useMemo(() => ({ confirm, toast }), [confirm, toast]);
@@ -240,38 +286,66 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
         </Pressable>
       </Modal>
 
-      {/* ----- Toast ----- */}
-      {toastItem && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.toast,
-            {
-              borderColor: toastTint + '66',
-              opacity: toastAnim,
-              transform: [
+      {/* ----- Toast -----
+          Wrapped in its own transparent native Modal (not just an absolutely
+          positioned View) so it renders in its own OS-level window layer.
+          Without this, a toast fired while another screen's own <Modal> is
+          open (e.g. the sign-in sheet) would render underneath that native
+          modal's surface and be completely invisible — the screen would just
+          look like nothing happened. box-none pointerEvents lets touches
+          pass through to whatever is behind the toast itself. */}
+      <Modal
+        visible={toastItem !== null}
+        transparent
+        statusBarTranslucent
+        animationType="none"
+        pointerEvents="none"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.toastLayer} pointerEvents="box-none">
+          {toastItem && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.toast,
                 {
-                  translateY: toastAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [56, 0],
-                  }),
+                  borderColor: toastTint + '66',
+                  opacity: toastAnim,
+                  transform: [
+                    {
+                      translateY: toastAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [56, 0],
+                      }),
+                    },
+                    {
+                      scale: toastAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.92, 1],
+                      }),
+                    },
+                    {
+                      // Error toasts shake side-to-side once they've landed;
+                      // this stays at 0 (no-op) for success/info toasts.
+                      translateX: toastShake.interpolate({
+                        inputRange: [-1, 0, 1],
+                        outputRange: [-8, 0, 8],
+                      }),
+                    },
+                  ],
                 },
-                {
-                  scale: toastAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.92, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <ToastIcon size={17} color={toastTint} />
-          <Text variant="labelLarge" style={styles.toastText} numberOfLines={2}>
-            {toastItem.message}
-          </Text>
-        </Animated.View>
-      )}
+              ]}
+            >
+              <Animated.View style={{ transform: [{ scale: toastIconPop }] }}>
+                <ToastIcon size={17} color={toastTint} />
+              </Animated.View>
+              <Text variant="labelLarge" style={styles.toastText} numberOfLines={2}>
+                {toastItem.message}
+              </Text>
+            </Animated.View>
+          )}
+        </View>
+      </Modal>
     </DialogContext.Provider>
   );
 }
@@ -335,11 +409,13 @@ const makeStyles = (colors: AppColors) =>
     },
     confirmText: { color: '#FFFFFF', fontWeight: '800' },
     btnPressed: { opacity: 0.8, transform: [{ scale: 0.97 }] },
+    toastLayer: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      paddingHorizontal: 24,
+      paddingBottom: 96,
+    },
     toast: {
-      position: 'absolute',
-      left: 24,
-      right: 24,
-      bottom: 96,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 9,

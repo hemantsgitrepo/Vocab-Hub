@@ -4,5 +4,9 @@
     "strict": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": false
-  }
+  },
+  // Edge Functions run on Deno (separate runtime/types, own remote imports)
+  // and are deployed straight to Supabase — they're never bundled by Metro,
+  // so they don't belong to this TS project.
+  "exclude": ["node_modules", "supabase/functions"]
 }

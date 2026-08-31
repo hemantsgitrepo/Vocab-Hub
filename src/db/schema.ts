@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 3,
+  version: 4,
   tables: [
     tableSchema({
       name: 'words',
@@ -22,6 +22,26 @@ export const schema = appSchema({
         { name: 'difficulty_level', type: 'string', isIndexed: true },
         { name: 'practice_status', type: 'string', isIndexed: true },
         { name: 'created_at', type: 'number', isIndexed: true },
+      ],
+    }),
+    // Offline-resilient outbox for lifecycle emails (welcome, milestone,
+    // streak, etc). A row is created immediately when an event fires; the
+    // email service drains this table whenever the device has connectivity,
+    // so nothing is lost if the user is offline at the moment of the event.
+    tableSchema({
+      name: 'email_queue',
+      columns: [
+        { name: 'to_email', type: 'string' },
+        { name: 'subject', type: 'string' },
+        { name: 'html', type: 'string' },
+        { name: 'email_type', type: 'string', isIndexed: true },
+        // 'pending' | 'sent' | 'failed' — 'failed' is only reached after
+        // repeated attempts; the queue keeps retrying 'pending' rows.
+        { name: 'status', type: 'string', isIndexed: true },
+        { name: 'attempts', type: 'number' },
+        { name: 'last_error', type: 'string', isOptional: true },
+        { name: 'created_at', type: 'number', isIndexed: true },
+        { name: 'sent_at', type: 'number', isOptional: true },
       ],
     }),
   ],
