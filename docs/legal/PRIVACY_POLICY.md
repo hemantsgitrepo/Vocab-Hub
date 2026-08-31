@@ -37,7 +37,19 @@ When you use the "Auto-fill" button while adding a word, the Application sends a
 * Only the requested word string (e.g., `"Meticulous"`) is transmitted.
 * No personal identifying information (PII), device UUIDs, or user profiles are attached to these dictionary lookup queries.
 
-> **No Email Communications:** Vocab Hub does not collect an email address and sends no transactional or marketing email of any kind.
+### C. Account Data (Optional)
+Vocab Hub can be used in full without an account. If you choose to sign in:
+* Authentication is handled by **Supabase**, our cloud authentication provider. You may sign in with an email address and password, a one-time code emailed to you, or a linked Google, GitHub, Microsoft/Azure, or Apple account.
+* Supabase stores your email address, authentication identifier, and session token on its servers so that you can sign in again.
+* Your personal dictionary, quiz scores, streak history, and preferences are **not** uploaded as part of signing in — they remain on your device.
+* Signing out removes the session from your device.
+
+### D. Outbound Email Communications (Optional)
+Only if you supply a notification address and enable notifications in Settings:
+* Your email address is stored locally on your device, and each pending message waits in a local outbox until it can be delivered.
+* Lifecycle emails (welcome, milestone celebrations, streak alerts) are sent by a server-side **Supabase Edge Function**, which relays them over authenticated Hostinger SMTP (`smtp.hostinger.com`, SSL/port 465). Mail-server credentials exist only on that server and are never shipped inside the Application.
+* Turning notifications off in Settings stops all outbound email.
+* We do not sell or share your email address with third-party data brokers or advertisers.
 
 ---
 
@@ -45,7 +57,7 @@ When you use the "Auto-fill" button while adding a word, the Application sends a
 
 ### A. Compliance with India DPDP Act, 2023
 * **Data Minimization & Purpose Limitation:** We collect zero unnecessary personal data. Processing is strictly limited to rendering vocabulary features on your local device.
-* **Right to Erasure:** You retain 100% control over your data. You can erase all personal vocabulary entries, streak history, and preferences instantly by deleting the app.
+* **Right to Erasure:** You retain 100% control over your data. You can erase all personal vocabulary entries, streak history, and preferences instantly by deleting the app. To delete an account and its stored email address, contact the Privacy Desk listed in Section 7.
 * **No Children's Data Processing:** Vocab Hub does not track or profile users under 18 years of age.
 
 ### B. Compliance with EU GDPR & CCPA
@@ -64,7 +76,7 @@ Tapping these links opens your device's native browser. Tapping external links s
 ---
 
 ## 5. Security Measures
-Local database records are protected by operating system device-level sandbox security (iOS App Sandbox and Android Internal Storage permissions). Because no user data resides on external cloud servers, cloud data breaches are inherently impossible.
+Local database records are protected by operating system device-level sandbox security (iOS App Sandbox and Android Internal Storage permissions). Account credentials and session tokens, where you have chosen to create an account, are held by Supabase and protected by that provider's infrastructure security; mail-server credentials are likewise held server-side and never ship inside the Application. Because your vocabulary collection, quiz scores, and streak history never leave your device, they cannot be exposed by a breach of any cloud service.
 
 ---
 
