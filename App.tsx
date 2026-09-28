@@ -9,7 +9,7 @@ import { View } from 'react-native';
 import { ThemeProvider, useAppTheme } from './src/ThemeContext';
 import { DialogProvider } from './src/ui/AppDialogs';
 import { UnlockProvider } from './src/ui/UnlockProvider';
-import { useConsent, useOnboarding } from './src/hooks';
+import { useConsent, useOnboarding, useProfile, useSession } from './src/hooks';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddWordScreen from './src/screens/AddWordScreen';
 import TravelModeScreen from './src/screens/TravelModeScreen';
@@ -17,6 +17,7 @@ import QuizScreen from './src/screens/QuizScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ConsentScreen from './src/screens/ConsentScreen';
+import SignInScreen from './src/screens/auth/SignInScreen';
 import { startEmailQueue } from './src/services/emailService';
 
 const Tab = createBottomTabNavigator();
@@ -25,6 +26,12 @@ function AppShell() {
   const { colors, paperTheme, navTheme, isDark } = useAppTheme();
   const [consented, giveConsent] = useConsent();
   const [onboarded, completeOnboarding] = useOnboarding();
+  const { session, loading: sessionLoading } = useSession();
+  const {
+    complete: profileComplete,
+    loading: profileLoading,
+    refresh: refreshProfile,
+  } = useProfile();
 
   // Drains any emails queued while offline, and keeps retrying on reconnect.
   // Starting this doesn't depend on consent/onboarding — it's a passive
@@ -33,9 +40,10 @@ function AppShell() {
     startEmailQueue();
   }, []);
 
-  // Hold on a themed blank until the stored flags resolve, so returning users
-  // never see the consent gate or carousel flash before they're dismissed.
-  if (consented === null || onboarded === null) {
+  // Hold on a themed blank until the stored flags (and the restored auth
+  // session) resolve, so returning users never see the consent gate, the
+  // carousel, or the sign-in screen flash before they're dismissed.
+  if (consented === null || onboarded === null || sessionLoading || (session && profileLoading)) {
     return (
       <PaperProvider theme={paperTheme}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -60,6 +68,30 @@ function AppShell() {
       <PaperProvider theme={paperTheme}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <OnboardingScreen onDone={completeOnboarding} />
+      </PaperProvider>
+    );
+  }
+
+  // Mandatory sign-in gate: the app is unreachable without an account.
+  // No skip, no close — signing in (or creating an account) is the only way
+  // forward. Once a session exists, useSession re-renders straight past this.
+  //
+  // A Google/Apple sign-in creates the account without ever asking for a
+  // mobile number, so those users land on the same screen in
+  // "finish signing up" mode until their profile has one.
+  if (!session || (!profileLoading && !profileComplete)) {
+    return (
+      <PaperProvider theme={paperTheme}>
+        <StatusBar style="light" />
+        <DialogProvider>
+          <SignInScreen
+            standalone
+            visible
+            completingProfile={!!session && !profileComplete}
+            onProfileCompleted={refreshProfile}
+            onClose={() => {}}
+          />
+        </DialogProvider>
       </PaperProvider>
     );
   }

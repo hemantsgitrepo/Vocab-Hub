@@ -14,31 +14,31 @@ export const GAMES: GameDef[] = [
     key: 'millionaire',
     title: 'Vocab Millionaire',
     tagline: '15 questions. One shot at 1,000,000 points.',
-    unlockAt: 20,
+    unlockAt: 22,
   },
   {
     key: 'memory',
     title: 'Memory Match',
     tagline: 'Flip the grid, pair every word with its match.',
-    unlockAt: 50,
+    unlockAt: 52,
   },
   {
     key: 'scrabble',
     title: 'Vocab Scrabble',
     tagline: 'Spell your words from a rack of 7 tiles.',
-    unlockAt: 60,
+    unlockAt: 62,
   },
   {
     key: 'crossword',
     title: 'Context Crossword',
     tagline: 'A fresh mini crossword from your own words.',
-    unlockAt: 75,
+    unlockAt: 77,
   },
   {
     key: 'bee',
     title: 'Spelling Bee',
     tagline: 'Seven hexes, one golden pangram.',
-    unlockAt: 90,
+    unlockAt: 92,
   },
 ];
 

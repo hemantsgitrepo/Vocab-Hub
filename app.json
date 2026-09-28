@@ -23,7 +23,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.AptitudeWords"
+      "package": "com.upquarx.vocabhub"
     },
     "web": {
       "favicon": "./assets/favicon.png"

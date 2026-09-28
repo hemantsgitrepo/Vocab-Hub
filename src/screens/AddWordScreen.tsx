@@ -46,6 +46,9 @@ const SOURCE_LABEL: Record<FieldSource, string> = {
   wiktionary: 'Wiktionary',
   datamuse: 'Datamuse',
   generated: 'Suggested',
+  // Only ever shown when the three real reference sources all found nothing —
+  // labelled to say plainly that this came from a model, not a dictionary.
+  llm: 'AI — verify',
 };
 
 /** Small pastel chip pinned to a field's outline showing where its value came from. */
@@ -66,7 +69,9 @@ function FieldBadge({
         ? colors.sage
         : source === 'datamuse'
           ? colors.amber
-          : colors.violet;
+          : source === 'llm'
+            ? colors.red
+            : colors.violet;
   return (
     <View
       pointerEvents="none"

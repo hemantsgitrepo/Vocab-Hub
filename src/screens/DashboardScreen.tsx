@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card, Chip, ProgressBar, Text } from 'react-native-paper';
+import { Card, Chip, Divider, Menu, ProgressBar, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BookOpen, Sparkles, Trash, Trophy } from 'lucide-react-native';
+import { BookOpen, LogOut, Sparkles, Trash, Trophy } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAllWords, useDailyGoal, useStreakManager } from '../hooks';
+import { useAllWords, useDailyGoal, useSession, useStreakManager } from '../hooks';
+import { signOut } from '../lib/auth';
 import EmptyState from '../ui/EmptyState';
 import { AppColors, difficultyColor } from '../theme';
 import { useAppTheme } from '../ThemeContext';
@@ -25,6 +26,34 @@ export default function DashboardScreen() {
   const words = useAllWords();
   const [goal] = useDailyGoal();
   const [journeyOpen, setJourneyOpen] = useState(false);
+  const { session } = useSession();
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+
+  // full_name is set at sign-up; OAuth providers supply `name` instead.
+  const displayName: string =
+    session?.user.user_metadata?.full_name ??
+    session?.user.user_metadata?.name ??
+    session?.user.email?.split('@')[0] ??
+    '';
+  const initial = (displayName.trim()[0] ?? '?').toUpperCase();
+
+  const confirmSignOut = async () => {
+    setProfileMenuOpen(false);
+    const ok = await dialogs.confirm({
+      title: 'Sign out?',
+      message:
+        'Your saved words stay on this device. You will need to sign in again to use the app.',
+      confirmLabel: 'Sign out',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await signOut();
+    } catch (e) {
+      console.error('SIGN_OUT_ERROR', e);
+      dialogs.toast('Could not sign out. Try again.', { kind: 'error' });
+    }
+  };
 
   const streakMgr = useStreakManager();
   const { view: streakView } = streakMgr;
@@ -70,6 +99,49 @@ export default function DashboardScreen() {
           <Text variant="headlineMedium" style={styles.title}>
             Vocab Hub
           </Text>
+
+          <Menu
+            visible={profileMenuOpen}
+            onDismiss={() => setProfileMenuOpen(false)}
+            anchor={
+              <Pressable
+                onPress={() => setProfileMenuOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Account: ${displayName}`}
+                style={({ pressed }) => [styles.avatarWrap, pressed && styles.avatarPressed]}
+              >
+                <LinearGradient
+                  colors={[colors.primary, colors.violet]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatar}
+                >
+                  <Text variant="titleMedium" style={styles.avatarText}>
+                    {initial}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            }
+            anchorPosition="bottom"
+          >
+            <View style={styles.menuHeader}>
+              <Text variant="titleSmall" style={styles.menuName} numberOfLines={1}>
+                {displayName || 'Signed in'}
+              </Text>
+              {!!session?.user.email && (
+                <Text variant="bodySmall" style={styles.menuEmail} numberOfLines={1}>
+                  {session.user.email}
+                </Text>
+              )}
+            </View>
+            <Divider />
+            <Menu.Item
+              onPress={confirmSignOut}
+              title="Sign out"
+              leadingIcon={({ size }) => <LogOut size={size} color={colors.red} />}
+              titleStyle={{ color: colors.red }}
+            />
+          </Menu>
         </View>
 
         <LinearGradient
@@ -230,7 +302,21 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   logo: { width: 32, height: 32 },
-  title: { color: colors.text, fontWeight: '700' },
+  // flex:1 pushes the avatar to the far right of the row.
+  title: { color: colors.text, fontWeight: '700', flex: 1 },
+  avatarWrap: { borderRadius: 20 },
+  avatarPressed: { opacity: 0.85, transform: [{ scale: 0.96 }] },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { color: '#FFFFFF', fontWeight: '800' },
+  menuHeader: { paddingHorizontal: 16, paddingVertical: 10, maxWidth: 240 },
+  menuName: { color: colors.text, fontWeight: '700' },
+  menuEmail: { color: colors.muted, marginTop: 2 },
   hero: { borderRadius: 20, padding: 20 },
   heroRow: { flexDirection: 'row', alignItems: 'center' },
   heroLeft: { flex: 1 },

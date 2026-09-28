@@ -30,7 +30,7 @@ const DATA_POINTS = [
   },
   {
     Icon: ShieldCheck,
-    text: 'No account is required to use the core app — nothing leaves your device unless you opt into a feature that needs it.',
+    text: 'An account is required to sign in, but nothing beyond it (your email, name and mobile number) leaves your device unless you opt into a feature that needs it.',
   },
   {
     Icon: FileText,

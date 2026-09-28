@@ -21,21 +21,138 @@ WebBrowser.maybeCompleteAuthSession();
  * needs real client credentials added in Supabase Dashboard -> Authentication
  * -> Providers before this will do anything but return a Supabase error.
  */
-export type WebOAuthProvider = 'google' | 'github' | 'azure';
+export type WebOAuthProvider = 'google' | 'github' | 'azure' | 'apple';
 
 const redirectTo = makeRedirectUri({ scheme: 'vocabhub', path: 'auth-callback' });
 
 // ----- Email + Password (traditional auth) ---------------------------------
 
 /**
+ * Is this mobile number already attached to another account? Answered by a
+ * SECURITY DEFINER function in Postgres, so it can say yes/no without
+ * exposing whose account holds it. Checked before signUp so a duplicate
+ * surfaces as a friendly message instead of a raw database error.
+ */
+export async function isMobileTaken(mobile: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_mobile_taken', {
+    p_mobile: mobile.trim(),
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+/** Same idea for email — checked before the sign-up OTP goes out. */
+export async function isEmailTaken(email: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_email_taken', {
+    p_email: email.trim(),
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+export interface Profile {
+  id: string;
+  full_name: string | null;
+  mobile_number: string | null;
+  email: string | null;
+}
+
+/** The signed-in user's profile row, or null if there isn't one yet. */
+export async function fetchProfile(): Promise<Profile | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  const id = userData.user?.id;
+  if (!id) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, mobile_number, email')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Profile) ?? null;
+}
+
+/**
+ * Fills in the details an OAuth sign-up can't collect (mobile number, and a
+ * name if the provider didn't supply one). Writes to both the profile row
+ * and the auth user's metadata so either source reads the same.
+ */
+export async function completeProfile(fullName: string, mobileNumber: string): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const id = userData.user?.id;
+  if (!id) throw new Error('You are not signed in.');
+
+  // Upsert, not update: accounts created before the profile trigger existed
+  // have no row yet, and an UPDATE against nothing silently succeeds — which
+  // would leave them stuck on the setup screen forever.
+  const { error: profileError } = await supabase.from('profiles').upsert({
+    id,
+    full_name: fullName.trim(),
+    mobile_number: mobileNumber.trim(),
+    email: userData.user?.email ?? null,
+  });
+  if (profileError) throw profileError;
+
+  const { error: userError } = await supabase.auth.updateUser({
+    data: { full_name: fullName.trim(), mobile_number: mobileNumber.trim() },
+  });
+  if (userError) throw userError;
+}
+
+/**
+ * Finishes an OTP-verified sign-up: the account already exists at this point
+ * (verifying the code created and signed them in), so this sets the password
+ * they chose and records their name and mobile number.
+ */
+export async function finalizeOtpSignUp(
+  password: string,
+  fullName: string,
+  mobileNumber: string
+): Promise<void> {
+  const { error } = await supabase.auth.updateUser({
+    password,
+    data: { full_name: fullName.trim(), mobile_number: mobileNumber.trim() },
+  });
+  if (error) throw error;
+
+  // The profile row was created by the trigger at OTP-verification time,
+  // before any of these details existed — fill them in now. Upsert covers
+  // the case where no row exists at all (pre-trigger accounts).
+  const { data: userData } = await supabase.auth.getUser();
+  const id = userData.user?.id;
+  if (!id) return;
+  const { error: profileError } = await supabase.from('profiles').upsert({
+    id,
+    full_name: fullName.trim(),
+    mobile_number: mobileNumber.trim(),
+    email: userData.user?.email ?? null,
+  });
+  if (profileError) throw profileError;
+}
+
+/**
  * Sign up with email + password. Creates a new account.
  * Works immediately without waiting for email verification.
+ *
+ * `fullName` and `mobileNumber` ride along as user metadata; a Postgres
+ * trigger copies them into `public.profiles`, where mobile_number carries a
+ * UNIQUE constraint so one number can't back two accounts.
  */
-export async function signUpWithPassword(email: string, password: string) {
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+  fullName?: string,
+  mobileNumber?: string
+) {
   const { data, error } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
-    options: { emailRedirectTo: undefined }, // Local app, no email redirect needed
+    options: {
+      emailRedirectTo: undefined, // Local app, no email redirect needed
+      data: {
+        full_name: fullName?.trim() || undefined,
+        mobile_number: mobileNumber?.trim() || undefined,
+      },
+    },
   });
   if (error) throw error;
 
@@ -90,6 +207,17 @@ export async function verifyEmailOtp(email: string, token: string) {
   });
   if (error) throw error;
   return data.session;
+}
+
+/**
+ * Sets a new password for the currently-authenticated user. Used by the
+ * "Forgot password" flow: verify an email OTP first (which signs the user
+ * back in even without knowing their old password), then call this to set
+ * a new one.
+ */
+export async function updatePassword(newPassword: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
 }
 
 // ----- Web-based OAuth (Google / GitHub / Microsoft Azure AD) ---------------
@@ -156,4 +284,25 @@ export async function signInWithApple() {
 export async function signOut(): Promise<void> {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+// ----- Account deletion ---------------------------------------------------------
+
+/**
+ * Permanently deletes the signed-in user's account and profile row via the
+ * delete-account Edge Function — the service_role key it needs can never live
+ * in this app. On success, also signs out locally so nothing keeps trying to
+ * use the now-deleted session. Caller is responsible for clearing local
+ * WatermelonDB data (words, streak, etc.) since that lives on-device and this
+ * function only touches the server side.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('delete-account');
+  if (error) throw error;
+  if (data && (data as { error?: string }).error) {
+    throw new Error((data as { error: string }).error);
+  }
+  // The account is gone server-side; drop the local session too so the app
+  // doesn't keep holding a token for a user that no longer exists.
+  await supabase.auth.signOut();
 }

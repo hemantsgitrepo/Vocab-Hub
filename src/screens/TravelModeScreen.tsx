@@ -59,6 +59,23 @@ function segmentsFor(w: Word, enabled: TravelField[]): string[] {
     .filter((t) => t.trim().length > 0);
 }
 
+/**
+ * Where to resume in `list` for the word `id`. If that word is still there we
+ * play it; if it was just unselected we carry on from whatever followed it in
+ * the list we were playing, rather than snapping back to the start.
+ */
+function resumeIndex(list: Word[], previous: Word[], id: string | null): number {
+  if (!id) return 0;
+  const direct = list.findIndex((w) => w.id === id);
+  if (direct !== -1) return direct;
+  const was = previous.findIndex((w) => w.id === id);
+  for (let k = was + 1; k < previous.length; k++) {
+    const found = list.findIndex((w) => w.id === previous[k].id);
+    if (found !== -1) return found;
+  }
+  return 0;
+}
+
 // Android's TTS treats rate 0.5 as normal speed; multiply for 0.8x / 1x / 1.25x.
 const RATES: Record<string, number> = { '0.8': 0.4, '1': 0.5, '1.25': 0.625 };
 const PITCHES: Record<string, number> = { low: 0.8, normal: 1, high: 1.2 };
@@ -82,7 +99,10 @@ export default function TravelModeScreen() {
 
   const playToken = useRef(0);
   const resolveRef = useRef<(() => void) | null>(null);
-  const indexRef = useRef(0);
+  // The playlist position is held as a word id, not an index: the queue can
+  // shrink or grow mid-session as words are selected, and an index would then
+  // point at a different word (or past the end, restarting the whole list).
+  const positionRef = useRef<string | null>(null);
   const loopRef = useRef(loop);
   loopRef.current = loop;
   // Read inside the async playback loop, so mid-session edits take effect.
@@ -178,20 +198,24 @@ export default function TravelModeScreen() {
     Tts.setDefaultPitch(PITCHES[pitch]);
   }, [speed, pitch]);
 
-  // Read through a ref so the async playback loop and the notification
-  // handlers always see the current queue, not their mount-time closure.
-  const queueRef = useRef(queue);
-  queueRef.current = queue;
-  const playlist = () => queueRef.current;
+  // Derived through refs so the async playback loop and the notification
+  // handlers always build the queue from the current selection, not from the
+  // closure they were created in. Selecting or clearing a word therefore takes
+  // effect on the very next word, without restarting the session.
+  const inCategoryRef = useRef(inCategory);
+  inCategoryRef.current = inCategory;
+  const excludedRef = useRef(excluded);
+  excludedRef.current = excluded;
+  const playlist = () => inCategoryRef.current.filter((w) => !excludedRef.current.has(w.id));
 
   // Last content pushed to the notification, so pausing can redraw it with a
   // Play button instead of losing the word it was sitting on.
   const notificationContent = useRef<{ title: string; body: string } | null>(null);
 
-  const playFrom = async (start: number) => {
+  /** Plays from the given word, or from the top of the queue when null. */
+  const playFrom = async (startId: string | null) => {
     const token = ++playToken.current;
-    const list = playlist();
-    if (list.length === 0) return;
+    if (playlist().length === 0) return;
     // Asked on first play rather than at launch, so the prompt arrives with
     // the context that explains it.
     await requestPlaybackNotificationPermission();
@@ -199,10 +223,17 @@ export default function TravelModeScreen() {
     Tts.setDefaultRate(RATES[speed]);
     Tts.setDefaultPitch(PITCHES[pitch]);
     setIsPlaying(true);
-    let i = start >= list.length ? 0 : start;
+    let previous = playlist();
+    let nextId = startId;
     while (token === playToken.current) {
-      indexRef.current = i;
+      // Rebuilt every word, so words selected or cleared mid-session are
+      // picked up or dropped from here on.
+      const list = playlist();
+      if (list.length === 0) break;
+      const i = resumeIndex(list, previous, nextId);
+      previous = list;
       const w = list[i];
+      positionRef.current = w.id;
       setCurrentId(w.id);
       notificationContent.current = {
         title: w.word,
@@ -221,16 +252,18 @@ export default function TravelModeScreen() {
       }
       await wait(1200);
       if (token !== playToken.current) return;
-      i++;
-      if (i >= list.length) {
+      const j = i + 1;
+      if (j >= list.length) {
         if (!loopRef.current) break;
-        i = 0;
+        nextId = null; // wrap to the top of whatever the queue holds by then
+      } else {
+        nextId = list[j].id;
       }
     }
     if (token === playToken.current) {
       // Reached the end — rewind so the next play starts the playlist over
       // instead of replaying the final word.
-      indexRef.current = 0;
+      positionRef.current = null;
       setIsPlaying(false);
       setCurrentId(null);
       notificationContent.current = null;
@@ -257,22 +290,44 @@ export default function TravelModeScreen() {
     Tts.stop();
     setIsPlaying(false);
     setCurrentId(null);
-    indexRef.current = 0;
+    positionRef.current = null;
     notificationContent.current = null;
     void hidePlaybackNotification();
   };
 
   const togglePlay = () => {
     if (!isPlaying && travelFields.length === 0) return;
-    isPlaying ? stop() : playFrom(indexRef.current);
+    isPlaying ? stop() : playFrom(positionRef.current);
   };
 
   const skip = () => {
     if (!isPlaying) return;
-    const next = indexRef.current + 1;
+    const list = playlist();
+    const at = list.findIndex((w) => w.id === positionRef.current);
+    const next = list[at + 1] ?? list[0];
     playToken.current++;
     Tts.stop();
-    playFrom(next >= playlist().length ? 0 : next);
+    playFrom(next?.id ?? null);
+  };
+
+  /**
+   * Tapping a word plays from there and continues down the list, the way a
+   * playlist behaves. A word that had been cleared is put back in first —
+   * asking to hear it is a clear request for it to be in the queue.
+   */
+  const playFromWord = (id: string) => {
+    if (travelFields.length === 0) return;
+    if (excludedRef.current.has(id)) {
+      const next = new Set(excludedRef.current);
+      next.delete(id);
+      // Written straight to the ref as well, so the playback loop starting
+      // below builds its queue with this word already included.
+      excludedRef.current = next;
+      setExcluded(next);
+    }
+    playToken.current++;
+    Tts.stop();
+    playFrom(id);
   };
 
   // The notification subscription is registered once, so route presses through
@@ -342,37 +397,46 @@ export default function TravelModeScreen() {
     const active = item.id === currentId;
     const included = !excluded.has(item.id);
     return (
-      <Pressable
-        onPress={() => toggleWord(item.id)}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: included }}
-        accessibilityLabel={item.word}
+      <Card
+        style={[
+          styles.wordCard,
+          !included && styles.wordCardExcluded,
+          active && styles.wordCardActive,
+        ]}
       >
-        <Card
-          style={[
-            styles.wordCard,
-            !included && styles.wordCardExcluded,
-            active && styles.wordCardActive,
-          ]}
-        >
-          <Card.Content style={styles.wordRow}>
+        <Card.Content style={styles.wordRow}>
+          {/* The box only ever changes what is queued; the word itself starts
+              playback, so the two intents never fight over one tap target. */}
+          <Pressable
+            onPress={() => toggleWord(item.id)}
+            hitSlop={10}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: included }}
+            accessibilityLabel={`${included ? 'Remove' : 'Add'} ${item.word}`}
+          >
             {included ? (
               <CheckSquare size={22} color={colors.primary} />
             ) : (
               <Square size={22} color={colors.muted} />
             )}
-            <View style={styles.wordTextWrap}>
-              <Text variant="titleMedium" style={styles.wordText}>
-                {item.word}
-              </Text>
-              <Text variant="bodySmall" numberOfLines={1} style={styles.wordMeaning}>
-                {item.meaning}
-              </Text>
-            </View>
-            {active && <Text style={styles.nowPlaying}>▶</Text>}
-          </Card.Content>
-        </Card>
-      </Pressable>
+          </Pressable>
+          <Pressable
+            style={styles.wordTextWrap}
+            onPress={() => playFromWord(item.id)}
+            disabled={travelFields.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel={`Play from ${item.word}`}
+          >
+            <Text variant="titleMedium" style={styles.wordText}>
+              {item.word}
+            </Text>
+            <Text variant="bodySmall" numberOfLines={1} style={styles.wordMeaning}>
+              {item.meaning}
+            </Text>
+          </Pressable>
+          {active && <Text style={styles.nowPlaying}>▶</Text>}
+        </Card.Content>
+      </Card>
     );
   };
 
@@ -461,15 +525,20 @@ export default function TravelModeScreen() {
                 renderItem={renderItem}
                 contentContainerStyle={styles.list}
                 ListHeaderComponent={
-                  <View style={styles.listHeader}>
-                    <Text variant="labelLarge" style={styles.queueCount}>
-                      {queue.length === inCategory.length
-                        ? `${inCategory.length} word${inCategory.length === 1 ? '' : 's'} queued`
-                        : `${queue.length} of ${inCategory.length} queued`}
+                  <View>
+                    <View style={styles.listHeader}>
+                      <Text variant="labelLarge" style={styles.queueCount}>
+                        {queue.length === inCategory.length
+                          ? `${inCategory.length} word${inCategory.length === 1 ? '' : 's'} queued`
+                          : `${queue.length} of ${inCategory.length} queued`}
+                      </Text>
+                      <Button mode="text" onPress={toggleAll} compact>
+                        {allSelected ? 'Clear' : 'Select all'}
+                      </Button>
+                    </View>
+                    <Text variant="bodySmall" style={styles.listHint}>
+                      Tap a word to play from there · tap the box to queue or skip it
                     </Text>
-                    <Button mode="text" onPress={toggleAll} compact>
-                      {allSelected ? 'Clear' : 'Select all'}
-                    </Button>
                   </View>
                 }
               />
@@ -609,6 +678,7 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
     paddingBottom: 6,
   },
   queueCount: { color: colors.muted },
+  listHint: { color: colors.muted, opacity: 0.8, paddingBottom: 8 },
   categoryEmpty: {
     flex: 1,
     alignItems: 'center',

@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import Word from './db/models/Word';
 import { observeAllWords, observeWordCount } from './db/words';
 import { supabase } from './lib/supabaseClient';
+import { Profile, fetchProfile } from './lib/auth';
 import { GAMES, GameKey } from './lib/games';
 import {
   DEFAULT_DAILY_GOAL,
@@ -241,6 +242,56 @@ export function useSession(): { session: Session | null; loading: boolean } {
   }, []);
 
   return { session, loading };
+}
+
+/**
+ * The signed-in user's profile row. `complete` is what the sign-in gate
+ * checks: an OAuth sign-up creates the account without ever asking for a
+ * mobile number, so those users still owe us that before entering the app.
+ * Re-fetches whenever the session changes (sign-in, sign-out, token refresh).
+ */
+export function useProfile(): {
+  profile: Profile | null;
+  complete: boolean;
+  loading: boolean;
+  refresh: () => void;
+} {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+  const { session } = useSession();
+  const userId = session?.user.id ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    fetchProfile()
+      .then((p) => {
+        if (!cancelled) setProfile(p);
+      })
+      .catch((e) => {
+        console.error('PROFILE_FETCH_ERROR', e);
+        if (!cancelled) setProfile(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, tick]);
+
+  return {
+    profile,
+    complete: !!profile?.mobile_number,
+    loading,
+    refresh: () => setTick((t) => t + 1),
+  };
 }
 
 /**

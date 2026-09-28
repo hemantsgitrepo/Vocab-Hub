@@ -1,14 +1,19 @@
 // ---------------------------------------------------------------------------
-// Multi-source word lookup. All three sources are free, keyless and public:
+// Multi-source word lookup, three free tiers plus one paid last resort:
 //
 //   1. Free Dictionary API  — definitions, phonetics, audio, examples
 //   2. Wiktionary (MediaWiki) — etymology, plus curated {{syn}}/{{ant}} lists
 //   3. Datamuse             — synonym/antonym backfill
+//   4. lookup-word-llm (Supabase Edge Function -> OpenRouter) — ONLY when
+//      tiers 1-2 together found nothing. Paid, so it's the last thing tried,
+//      not a parallel source; see supabase/functions/lookup-word-llm for why
+//      it's built to decline rather than guess.
 //
-// Sources are queried in parallel and merged by priority, so one slow or dead
-// service degrades the result instead of failing the lookup. Anything still
-// missing is derived locally (layman explanation, example sentence).
+// Tiers 1-3 are queried in parallel and merged by priority, so one slow or
+// dead service degrades the result instead of failing the lookup. Anything
+// still missing is derived locally (layman explanation, example sentence).
 // ---------------------------------------------------------------------------
+import { supabase } from '../lib/supabaseClient';
 
 const BASE_URL = 'https://api.dictionaryapi.dev/api/v2/entries/en';
 const WIKTIONARY_URL = 'https://en.wiktionary.org/w/api.php';
@@ -20,10 +25,21 @@ const UA = 'VocabHub/1.0 (offline vocabulary trainer; educational use)';
 /** Datamuse scores below this are near-noise (e.g. "unfastidious", score 12). */
 const MIN_DATAMUSE_SCORE = 500;
 
-const TIMEOUT_MS = 8000;
+// Lowered from 8s: a source that's actually dead was making every lookup
+// wait the full 8 seconds before falling back. 5s still gives a slow mobile
+// connection room, without stalling the UI as long on a hung request.
+const TIMEOUT_MS = 5000;
 
-/** Where a field's value came from — drives the "auto-filled" badges in the UI. */
-export type FieldSource = 'dictionary' | 'wiktionary' | 'datamuse' | 'generated';
+// Per-word results cache (session-lifetime, in memory). Re-adding a word you
+// just looked up -- or re-opening the Add Word screen on the same word after
+// backing out -- was re-querying all three APIs from scratch every time.
+const cache = new Map<string, DictionaryResult>();
+
+/** Where a field's value came from — drives the "auto-filled" badges in the UI.
+ *  'llm' is flagged distinctly in the UI (see AddWordScreen's SOURCE_LABEL) —
+ *  it's a paid, model-generated fallback and worth a second look, unlike the
+ *  other three which are real reference sources. */
+export type FieldSource = 'dictionary' | 'wiktionary' | 'datamuse' | 'generated' | 'llm';
 
 export interface DictionaryResult {
   pronunciation: string;
@@ -97,7 +113,9 @@ function derivedCandidates(word: string): string[] {
   add(`${stem}ance`);
   add(`${stem}er`);
 
-  return [...out].slice(0, 8);
+  // Capped at 5 (was 8): each candidate is a full network round-trip, and
+  // this list was the single biggest contributor to a slow lookup.
+  return [...out].slice(0, 5);
 }
 
 /** Looks up derived forms in parallel, returning e.g. "adverb: meticulously". */
@@ -246,10 +264,47 @@ function englishSection(wikitext: string): string {
   return next < 0 ? rest : rest.slice(0, next);
 }
 
+const POS_HEADING_RE =
+  /^=+\s*(Noun|Verb|Adjective|Adverb|Pronoun|Preposition|Conjunction|Interjection|Determiner|Numeral)\s*(?:\s*\d+)?\s*=+\s*$/m;
+
 export interface WiktionaryResult {
   origin: string;
   synonyms: string[];
   antonyms: string[];
+  /** Populated only so lookupWord() can fall back entirely to Wiktionary
+   *  when the primary Dictionary API is unreachable (it does happen — see
+   *  the 522 outage this was added for). */
+  meaning: string;
+  partOfSpeech: string;
+  pronunciation: string;
+}
+
+/** First definition line ("# ...", not "#:" / "#*") under a part-of-speech heading. */
+function firstDefinition(section: string): { meaning: string; partOfSpeech: string } {
+  const at = section.search(POS_HEADING_RE);
+  if (at < 0) return { meaning: '', partOfSpeech: '' };
+  const headingMatch = POS_HEADING_RE.exec(section.slice(at));
+  const partOfSpeech = (headingMatch?.[1] ?? '').toLowerCase();
+
+  const after = section.slice(at).replace(POS_HEADING_RE, '');
+  const end = after.search(/^=+[^=]+=+\s*$/m);
+  const body = end < 0 ? after : after.slice(0, end);
+
+  const defLine = body
+    .split('\n')
+    .find((line) => /^#(?![:*#])\s*/.test(line.trim()));
+  if (!defLine) return { meaning: '', partOfSpeech };
+
+  const meaning = cleanWikitext(defLine.replace(/^#\s*/, ''));
+  return { meaning, partOfSpeech };
+}
+
+/** First IPA pronunciation, e.g. {{IPA|en|/mɪˈtɪkjɪlɪs/|...}} -> /mɪˈtɪkjɪlɪs/. */
+function firstIpa(section: string): string {
+  const m = /\{\{IPA\|en\|([^}]*)\}\}/i.exec(section);
+  if (!m) return '';
+  const slashForm = templateParts(m[1]).find((p) => /^\/.*\/$/.test(p));
+  return slashForm ?? '';
 }
 
 /**
@@ -296,7 +351,17 @@ export async function fetchWiktionary(word: string): Promise<WiktionaryResult | 
     return out;
   };
 
-  return { origin, synonyms: listFrom('syn'), antonyms: listFrom('ant') };
+  const { meaning, partOfSpeech } = firstDefinition(section);
+  const pronunciation = firstIpa(section);
+
+  return {
+    origin,
+    synonyms: listFrom('syn'),
+    antonyms: listFrom('ant'),
+    meaning,
+    partOfSpeech,
+    pronunciation,
+  };
 }
 
 // ----- 3. Datamuse ----------------------------------------------------------
@@ -382,6 +447,71 @@ export function buildExample(word: string, partOfSpeech: string): string {
   }
 }
 
+// ----- 4. LLM fallback (paid, last resort) ----------------------------------
+
+interface LlmLookupResponse {
+  found: boolean;
+  meaning?: string;
+  partOfSpeech?: string;
+  synonyms?: string[];
+  antonyms?: string[];
+  example?: string;
+  wordOrigin?: string;
+  laymanExplanation?: string;
+}
+
+/**
+ * Calls the lookup-word-llm Edge Function — never OpenRouter directly, so the
+ * API key never has to exist in this app bundle. Only worth trying once the
+ * three free sources have already come up empty; see that function's own
+ * comment for why it's built to say "not found" rather than invent an entry.
+ */
+async function fetchLlmFallback(word: string): Promise<LlmLookupResponse | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('lookup-word-llm', {
+      body: { word },
+    });
+    if (error) return null;
+    return (data as LlmLookupResponse) ?? null;
+  } catch {
+    return null; // offline, function down, whatever — degrade to "not found"
+  }
+}
+
+function llmOnlyResult(term: string, llm: LlmLookupResponse): DictionaryResult {
+  const synonyms = dedupe(llm.synonyms ?? [], term).slice(0, 2);
+  const antonyms = dedupe(llm.antonyms ?? [], term).slice(0, 2);
+  const meaning = llm.meaning ?? '';
+  const partOfSpeech = llm.partOfSpeech ?? '';
+  const example = llm.example || (meaning ? buildExample(term, partOfSpeech) : '');
+  const laymanExplanation = llm.laymanExplanation || simplifyDefinition(meaning, term);
+
+  const sources: DictionaryResult['sources'] = {};
+  if (meaning) sources.meaning = 'llm';
+  if (partOfSpeech) sources.partOfSpeech = 'llm';
+  if (synonyms.length) sources.synonyms = 'llm';
+  if (antonyms.length) sources.antonyms = 'llm';
+  if (example) sources.example = llm.example ? 'llm' : 'generated';
+  if (llm.wordOrigin) sources.wordOrigin = 'llm';
+  if (laymanExplanation) sources.laymanExplanation = llm.laymanExplanation ? 'llm' : 'generated';
+
+  return {
+    // No pronunciation/audio at this tier — an LLM-guessed IPA transcription
+    // is a real risk of teaching a wrong pronunciation, worse than showing none.
+    pronunciation: '',
+    audioUrl: '',
+    meaning,
+    example,
+    synonyms,
+    antonyms,
+    partOfSpeech,
+    wordForms: '',
+    wordOrigin: llm.wordOrigin ?? '',
+    laymanExplanation,
+    sources,
+  };
+}
+
 // ----- Orchestration --------------------------------------------------------
 
 /** Trims, de-duplicates, drops the headword itself and rejects long phrases. */
@@ -399,22 +529,90 @@ const dedupe = (list: string[], exclude: string) => {
   return out;
 };
 
+/** Builds a full result from Wiktionary + Datamuse alone, for when the
+ *  primary Dictionary API is unreachable. */
+function wiktionaryOnlyResult(
+  term: string,
+  wikt: WiktionaryResult,
+  dmSyn: string[],
+  dmAnt: string[],
+  wordForms: string
+): DictionaryResult {
+  const synonyms = dedupe([...wikt.synonyms, ...dmSyn], term).slice(0, 2);
+  const antonyms = dedupe([...wikt.antonyms, ...dmAnt], term).slice(0, 2);
+  const partOfSpeech = wikt.partOfSpeech;
+  const example = buildExample(term, partOfSpeech);
+  const laymanExplanation = simplifyDefinition(wikt.meaning, term);
+
+  const sources: DictionaryResult['sources'] = {
+    meaning: 'wiktionary',
+    example: 'generated',
+    laymanExplanation: 'generated',
+  };
+  if (synonyms.length) sources.synonyms = wikt.synonyms.length ? 'wiktionary' : 'datamuse';
+  if (antonyms.length) sources.antonyms = wikt.antonyms.length ? 'wiktionary' : 'datamuse';
+  if (wikt.origin) sources.wordOrigin = 'wiktionary';
+  if (wikt.pronunciation) sources.pronunciation = 'wiktionary';
+  if (partOfSpeech) sources.partOfSpeech = 'wiktionary';
+  if (wordForms) sources.wordForms = 'dictionary';
+
+  const result: DictionaryResult = {
+    pronunciation: wikt.pronunciation,
+    audioUrl: '', // Wiktionary's audio files need Commons URL resolution -- not worth it as a fallback
+    meaning: wikt.meaning,
+    example,
+    synonyms,
+    antonyms,
+    partOfSpeech,
+    wordForms,
+    wordOrigin: wikt.origin,
+    laymanExplanation,
+    sources,
+  };
+  cache.set(term.toLowerCase(), result);
+  return result;
+}
+
 /**
  * Looks a word up across every source and fills what it can. Returns null only
- * when the primary dictionary has no entry at all.
+ * when neither the primary dictionary nor Wiktionary has an entry.
  */
 export async function lookupWord(word: string): Promise<DictionaryResult | null> {
   const term = word.trim();
+  const cached = cache.get(term.toLowerCase());
+  if (cached) return cached;
 
-  // All sources in flight together — the slowest one bounds the lookup.
-  const [entry, wikt, dmSyn, dmAnt] = await Promise.all([
+  // All sources in flight together — including word-forms, which used to run
+  // as a separate step *after* this batch and roughly doubled the total wait.
+  // It only needs `term`, not the dictionary entry, so it doesn't have to wait.
+  const [entry, wikt, dmSyn, dmAnt, wordForms] = await Promise.all([
     fetchEntry(term),
     fetchWiktionary(term),
     fetchDatamuse('rel_syn', term),
     fetchDatamuse('rel_ant', term),
+    fetchWordForms(term),
   ]);
 
-  if (!entry) return null;
+  // The primary Dictionary API is a free, unguaranteed service and does have
+  // outages (a full Cloudflare 522 was observed against it). Rather than
+  // fail the whole lookup, fall back to Wiktionary's own definition when it
+  // has one — a real word looked up during an outage would otherwise show
+  // "not found", which reads as "this word doesn't exist" rather than "one
+  // upstream source is down".
+  if (!entry) {
+    if (wikt?.meaning) return wiktionaryOnlyResult(term, wikt, dmSyn, dmAnt, wordForms);
+    // Both free sources came up empty — last resort before "not found" is the
+    // paid LLM fallback. It's built to decline rather than guess (see
+    // fetchLlmFallback's target function), so this still returns null for a
+    // genuinely made-up word instead of fabricating an entry for it.
+    const llm = await fetchLlmFallback(term);
+    if (llm?.found) {
+      const result = llmOnlyResult(term, llm);
+      cache.set(term.toLowerCase(), result); // avoid re-billing a repeat lookup
+      return result;
+    }
+    return null;
+  }
 
   const phonetics: any[] = entry.phonetics ?? [];
   const meanings: any[] = entry.meanings ?? [];
@@ -482,10 +680,9 @@ export async function lookupWord(word: string): Promise<DictionaryResult | null>
   if (audioUrl) sources.audioUrl = 'dictionary';
   if (partOfSpeech) sources.partOfSpeech = 'dictionary';
 
-  const wordForms = await fetchWordForms(term);
   if (wordForms) sources.wordForms = 'dictionary';
 
-  return {
+  const result: DictionaryResult = {
     pronunciation,
     audioUrl,
     meaning,
@@ -498,4 +695,6 @@ export async function lookupWord(word: string): Promise<DictionaryResult | null>
     laymanExplanation,
     sources,
   };
+  cache.set(term.toLowerCase(), result);
+  return result;
 }

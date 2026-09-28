@@ -41,11 +41,13 @@ import {
   LogIn,
   LogOut,
   Mail,
+  Trash2,
   Minus,
   Moon,
   MonitorSmartphone,
   Plus,
   ShieldCheck,
+  Smartphone,
   Sun,
   Target,
   Upload,
@@ -64,7 +66,8 @@ import {
 import { TRAVEL_FIELDS, ThemeMode, TravelField } from '../db/settings';
 import { fetchAllWords } from '../db/words';
 import { CSV_TEMPLATE, ImportError, importWordsFromCsv, wordsToCsv } from '../db/csv';
-import { signOut } from '../lib/auth';
+import { deleteAccount, signOut } from '../lib/auth';
+import { database } from '../db';
 import { AppColors } from '../theme';
 import { useAppTheme } from '../ThemeContext';
 import LegalViewerScreen from './legal/LegalViewerScreen';
@@ -362,6 +365,8 @@ export default function SettingsScreen() {
   const { session } = useSession();
   const [signInOpen, setSignInOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [busy, setBusy] = useState<'export' | 'template' | 'import' | null>(null);
   const [snack, setSnack] = useState('');
   const [importErrors, setImportErrors] = useState<ImportError[] | null>(null);
@@ -455,6 +460,26 @@ export default function SettingsScreen() {
     }
   };
 
+  /**
+   * Deletes the account server-side, then wipes the local WatermelonDB copy
+   * of everything tied to it (words, streak, queued emails) — the account is
+   * gone, so nothing on-device should still claim to belong to it.
+   */
+  const doDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      await deleteAccount();
+      await database.write(() => database.unsafeResetDatabase());
+      setDeleteConfirmOpen(false);
+      setSnack('Your account and data have been deleted.');
+    } catch (e) {
+      console.error('DELETE_ACCOUNT_ERROR', e);
+      setSnack('Something went wrong while deleting your account. Please try again.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   const toggleNotify = () => {
     if (!notifyEnabled && !EMAIL_RE.test(notifyEmail.trim())) {
       setSnack('Enter a valid email address first.');
@@ -482,32 +507,63 @@ export default function SettingsScreen() {
           Settings
         </Text>
 
-        <SectionLabel styles={styles}>Account</SectionLabel>
+        <SectionLabel styles={styles}>Profile</SectionLabel>
 
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.goalHeader}>
               <UserCircle size={22} color={colors.primary} />
               <Text variant="titleMedium" style={styles.cardTitle}>
-                {session ? 'Signed in' : 'Not signed in'}
+                {/* full_name is set at sign-up; OAuth providers supply their
+                    own name field, so fall back through both before email. */}
+                {session?.user.user_metadata?.full_name ??
+                  session?.user.user_metadata?.name ??
+                  session?.user.email ??
+                  'Not signed in'}
               </Text>
             </View>
-            <Text variant="bodyMedium" style={styles.hint}>
-              {session
-                ? `Signed in as ${session.user.email ?? session.user.id}. Your words stay on this device either way — this only affects account-based features.`
-                : 'Optional. Your words and progress stay on this device with or without an account.'}
-            </Text>
+            {session && (
+              <View style={styles.profileRows}>
+                {!!session.user.email && (
+                  <View style={styles.profileRow}>
+                    <Mail size={15} color={colors.muted} />
+                    <Text variant="bodyMedium" style={styles.profileValue}>
+                      {session.user.email}
+                    </Text>
+                  </View>
+                )}
+                {!!session.user.user_metadata?.mobile_number && (
+                  <View style={styles.profileRow}>
+                    <Smartphone size={15} color={colors.muted} />
+                    <Text variant="bodyMedium" style={styles.profileValue}>
+                      {session.user.user_metadata.mobile_number}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
             {session ? (
-              <Button
-                mode="outlined"
-                icon={({ size, color }) => <LogOut size={size} color={color} />}
-                onPress={doSignOut}
-                loading={signingOut}
-                disabled={signingOut}
-                style={styles.dataBtn}
-              >
-                Sign out
-              </Button>
+              <>
+                <Button
+                  mode="outlined"
+                  icon={({ size, color }) => <LogOut size={size} color={color} />}
+                  onPress={doSignOut}
+                  loading={signingOut}
+                  disabled={signingOut}
+                  style={styles.dataBtn}
+                >
+                  Sign out
+                </Button>
+                <Button
+                  mode="text"
+                  textColor={colors.red}
+                  icon={({ size, color }) => <Trash2 size={size} color={color} />}
+                  onPress={() => setDeleteConfirmOpen(true)}
+                  style={styles.dataBtn}
+                >
+                  Delete account
+                </Button>
+              </>
             ) : (
               <Button
                 mode="contained-tonal"
@@ -823,6 +879,34 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <Portal>
+        <Dialog
+          visible={deleteConfirmOpen}
+          onDismiss={() => (deletingAccount ? undefined : setDeleteConfirmOpen(false))}
+        >
+          <Dialog.Icon icon={({ size }) => <Trash2 size={size} color={colors.red} />} />
+          <Dialog.Title style={styles.dialogTitle}>Delete your account?</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={styles.dialogIntro}>
+              This permanently deletes your account and profile, and erases
+              every word, streak and setting on this device. This cannot be
+              undone.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setDeleteConfirmOpen(false)} disabled={deletingAccount}>
+              Cancel
+            </Button>
+            <Button
+              onPress={doDeleteAccount}
+              loading={deletingAccount}
+              disabled={deletingAccount}
+              textColor={colors.red}
+            >
+              Delete everything
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
         <Dialog visible={importErrors !== null} onDismiss={() => setImportErrors(null)}>
           <Dialog.Icon icon={({ size }) => <FileText size={size} color={colors.red} />} />
           <Dialog.Title style={styles.dialogTitle}>
@@ -916,6 +1000,9 @@ const makeStyles = (colors: AppColors) => StyleSheet.create({
   legalText: { flex: 1 },
   legalDivider: { backgroundColor: colors.border },
   hint: { color: colors.muted, lineHeight: 20 },
+  profileRows: { marginTop: 10, gap: 7 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  profileValue: { color: colors.muted },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -64,7 +64,7 @@ export const TRAVEL_GUIDE: Guide = {
     {
       Icon: Repeat,
       title: 'Fine-tune, then loop it',
-      body: 'Tap any word to drop it from the current category, or use Select all and Clear. Switching category starts fresh and ends the current session. Loop restarts the playlist when it ends, and Skip jumps to the next word without stopping.',
+      body: 'Tap a word to start playing from there and carry on down the list. Tap its box to queue or skip that word — the change applies from the next word, without restarting the session. Select all and Clear cover the whole list at once. Switching category starts fresh and ends the current session. Loop restarts the playlist when it ends, and Skip jumps to the next word without stopping.',
     },
   ],
 };
