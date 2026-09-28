@@ -27,7 +27,7 @@ Vocab Hub operates under the umbrella of **JobManch.ai** and **Upquarx Technolog
 ### A. Data Stored Locally on Your Device (On-Device Data)
 Vocab Hub is an **offline-first** mobile application. The following data is generated and stored locally in your device's sandbox storage via WatermelonDB/SQLite:
 * **Personal Dictionary:** Words, definitions, pronunciations, synonyms, antonyms, example sentences, layman explanations, and word origins added by you.
-* **Learning Progress:** Quiz scores, streak map history, streak freezes, repair challenges, game milestones, and XP levels.
+* **Learning Progress:** Quiz scores, streak map history, streak freezes, repair challenges, and game milestones.
 * **App Preferences:** Daily word goal, Travel Mode audio speed/pitch settings, theme choices (Light/Dark), and game sound toggles.
 
 > **Zero Cloud Tracking:** We do NOT transmit, sync, backup, sell, or rent your local dictionary data or quiz scores to any external cloud servers.
@@ -37,10 +37,17 @@ When you use the "Auto-fill" button while adding a word, the Application sends a
 * Only the requested word string (e.g., `"Meticulous"`) is transmitted.
 * No personal identifying information (PII), device UUIDs, or user profiles are attached to these dictionary lookup queries.
 
-### C. Outbound Email Communications (Optional)
-If you opt-in to configure email notifications in Settings:
-* Your email address is stored locally on your device.
-* Transactional lifecycle emails (Welcome, Milestone celebrations, Streak alerts) are dispatched securely via authenticated Hostinger SMTP (`smtp.hostinger.com` over SSL/Port 465) directly to your configured address.
+### C. Account Data (Optional)
+Vocab Hub can be used in full without an account. If you choose to sign in:
+* Authentication is handled by **Supabase**, our cloud authentication provider. You may sign in with an email address and password, a one-time code emailed to you, or a linked Google, GitHub, Microsoft/Azure, or Apple account.
+* Supabase stores your email address, authentication identifier, and session token on its servers so that you can sign in again.
+* Your personal dictionary, quiz scores, streak history, and preferences are **not** uploaded as part of signing in — they remain on your device.
+* Signing out removes the session from your device.
+
+### D. Email Notifications (Optional)
+Settings lets you save a notification address and turn notifications on:
+* That address is stored **locally on your device**. Saving it does not upload it.
+* **This version of the Application sends no lifecycle email.** The delivery path exists but is dormant: were it enabled, messages would wait in a local outbox and be dispatched by a server-side **Supabase Edge Function** relaying over authenticated Hostinger SMTP (`smtp.hostinger.com`, SSL/port 465), with mail-server credentials held only on that server and never shipped inside the Application. This section will be updated before any such email is sent.
 * We do not sell or share your email address with third-party data brokers or advertisers.
 
 ---
@@ -49,7 +56,7 @@ If you opt-in to configure email notifications in Settings:
 
 ### A. Compliance with India DPDP Act, 2023
 * **Data Minimization & Purpose Limitation:** We collect zero unnecessary personal data. Processing is strictly limited to rendering vocabulary features on your local device.
-* **Right to Erasure:** You retain 100% control over your data. You can erase all personal vocabulary entries, streak history, and preferences instantly by deleting the app or tapping "Clear Local Storage" under Settings.
+* **Right to Erasure:** You retain 100% control over your data. You can erase all personal vocabulary entries, streak history, and preferences instantly by deleting the app. To delete an account and its stored email address, contact the Privacy Desk listed in Section 7.
 * **No Children's Data Processing:** Vocab Hub does not track or profile users under 18 years of age.
 
 ### B. Compliance with EU GDPR & CCPA
@@ -68,7 +75,7 @@ Tapping these links opens your device's native browser. Tapping external links s
 ---
 
 ## 5. Security Measures
-Local database records are protected by operating system device-level sandbox security (iOS App Sandbox and Android Internal Storage permissions). Because no user data resides on external cloud servers, cloud data breaches are inherently impossible.
+Local database records are protected by operating system device-level sandbox security (iOS App Sandbox and Android Internal Storage permissions). Account credentials and session tokens, where you have chosen to create an account, are held by Supabase and protected by that provider's infrastructure security; mail-server credentials are likewise held server-side and never ship inside the Application. Because your vocabulary collection, quiz scores, and streak history never leave your device, they cannot be exposed by a breach of any cloud service.
 
 ---
 

@@ -1,6 +1,8 @@
 # Vocab Hub — Application Summary
 
-**Version** 1.0.0 · offline-first vocabulary trainer for competitive-exam aspirants · single-user, no backend, no auth, no accounts.
+**Version** 1.0.0 · offline-first vocabulary trainer for competitive-exam aspirants · single-user, with an **optional** cloud account.
+
+All learning data — words, quiz scores, streaks, preferences — is created, stored, and read **entirely on-device**; nothing about the collection is ever synced. Since the Supabase work landed, the app also has an optional sign-in and a first-launch consent gate, so "no backend, no auth" (true through commit `73d58e6`) no longer describes it. What sign-in buys today is an account identity — not sync, not backup.
 
 > This document should be kept in sync with the codebase. Whenever a feature, dependency, schema column, or external reference is added/changed/removed, update the relevant section here in the same change. See the note at the bottom of `CLAUDE.md`.
 
@@ -21,12 +23,18 @@
 | File I/O | `expo-file-system`, `expo-sharing`, `expo-document-picker` | ~57.x |
 | Animation | React Native's built-in `Animated` API — **no `react-native-reanimated`** | — |
 | Markdown | `react-native-markdown-display` — renders the in-app Terms/Privacy viewer. Requires an explicit `punycode` install: its `markdown-it@10` dependency requires that Node builtin, which RN does not ship | ^7.0.2 |
+| Auth & backend | `@supabase/supabase-js` — optional sign-in and the `send-email` Edge Function; needs `react-native-url-polyfill` because Supabase expects a WHATWG `URL` | ^2.45.0 |
+| OAuth / sign-in | `expo-auth-session`, `expo-web-browser`, `expo-linking` (web providers), `expo-apple-authentication` (native Apple Sign-In) | ~57.x |
+| Secure storage | `expo-secure-store` — Supabase session tokens in the OS keystore/Keychain rather than the app database | ~57.0.1 |
+| Connectivity | `@react-native-community/netinfo` — drives the email outbox retry-on-reconnect | 12.0.1 |
 
-**Expo plugins:** `@morrowdigital/watermelondb-expo-plugin`, `expo-build-properties` (Android `pickFirst: **/libc++_shared.so`), `expo-sharing`, `expo-audio`, `react-native-notify-kit` (Android `foregroundService.types: ["mediaPlayback"]`).
+**Expo plugins:** `@morrowdigital/watermelondb-expo-plugin`, `expo-build-properties` (Android `pickFirst: **/libc++_shared.so`), `expo-sharing`, `expo-audio`, `react-native-notify-kit` (Android `foregroundService.types: ["mediaPlayback"]`), `expo-apple-authentication`, `expo-web-browser`. `app.json` also declares `"scheme": "vocabhub"` — the deep-link scheme OAuth redirects return through.
+
+**Configuration:** the app reads `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` from `.env` (template in `.env.example`; `.env` is gitignored). Only `EXPO_PUBLIC_*` values belong there — Expo inlines them into the client bundle, so nothing prefixed that way can be secret. The anon key is designed to be public and row-level security is what protects the data; the `service_role` key and SMTP credentials must never appear in the app, and live only as Edge Function secrets.
 
 `android/` is **gitignored and generated** — all native configuration must be expressed as Expo config plugins in `app.json`, never hand-edited into the manifest, or it is lost on the next `expo prebuild`.
 
-Two deliberate constraints: everything runs **offline on-device** (the only network call is the dictionary lookup), and **no paid APIs or services** are used anywhere.
+One deliberate constraint still holds unchanged: the **vocabulary collection never leaves the device**. The other two have moved. Network calls are no longer just the dictionary lookup — sign-in and the (dormant) email path both talk to Supabase. And "no paid APIs or services" now depends on tier: Supabase is used on its free tier, but the email path terminates at Hostinger SMTP, a paid mailbox the organisation already operates. Worth a conscious decision before the email feature is switched on, since `CLAUDE.md` still states the no-paid-services rule absolutely.
 
 ---
 
@@ -38,8 +46,11 @@ Two deliberate constraints: everything runs **offline on-device** (the only netw
 | `en.wiktionary.org/w/api.php` (MediaWiki `action=parse`) | Etymology (`word_origin`), plus curated `{{syn}}`/`{{ant}}` lists | None — free, keyless |
 | `api.datamuse.com/words?rel_syn=` / `rel_ant=` | Synonym/antonym backfill | None — free, keyless |
 | `jobmanch.ai`, `upquarx.com` | Partner links in Settings | N/A |
+| `<project-ref>.supabase.co` | Sign-in / sign-out, session refresh, and `functions/v1/send-email` | Supabase anon key + user session JWT |
+| `accounts.google.com`, `github.com`, Microsoft/Azure, Apple | OAuth provider redirects, opened in the system browser (Apple uses the native sheet) | Provider-side |
+| `smtp.hostinger.com:465` | SMTP relay for lifecycle email — reached **only from the Edge Function**, never from the app | Server-side SMTP credentials |
 
-That is the **complete** list of outbound URLs in `src/`. There is no analytics, telemetry, crash reporting, ads, or sync.
+That is the **complete** list of outbound URLs. There is still no analytics, telemetry, crash reporting, ads, or collection sync — the additions are authentication and the email relay, nothing that carries vocabulary data.
 
 **Multi-source auto-fill** (`src/api/dictionary.ts`) queries all three sources in parallel with an 8s timeout each, so a slow or dead source degrades the result rather than failing the lookup. Merge priority for synonyms/antonyms is dictionary → Wiktionary → Datamuse (Datamuse results below a score of 500 are discarded as noise). Two fields have no free source and are derived locally:
 
@@ -54,7 +65,7 @@ Every populated field carries a `FieldSource` (`dictionary` | `wiktionary` | `da
 
 ## 3. Database
 
-### `words` table — schema **v3**, 16 columns
+### `words` table — schema **v4**, 16 columns
 
 | Column | Type | Notes |
 |---|---|---|
@@ -73,7 +84,26 @@ Every populated field carries a `FieldSource` (`dictionary` | `wiktionary` | `da
 | `practice_status` | string **indexed** | `new` / `learning` / `mastered` |
 | `created_at` | number **indexed, readonly** | Drives all streak/history logic |
 
-**Migrations:** v1→v2 added `part_of_speech` + `word_forms`; v2→v3 added `word_origin`. `src/db/models/Word.ts` applies WatermelonDB's legacy decorators **manually** — Babel's decorator transform conflicts with `babel-preset-expo` on SDK 57.
+The `words` columns are unchanged at v4 — the bump added a second table, below.
+
+### `email_queue` table — added in **v4**
+
+Local outbox backing the email service (`src/db/models/EmailQueueItem.ts`). A message is written here *before* any send is attempted, so nothing is lost if the device is offline; `netinfo` retries on reconnect, up to 5 attempts.
+
+| Column | Type | Notes |
+|---|---|---|
+| `to_email` | string | Destination address |
+| `subject`, `html` | string | Rendered message |
+| `email_type` | string **indexed** | `welcome` / `milestone` / `streak` — logging label |
+| `status` | string **indexed** | `pending` / `sent` / `failed` |
+| `attempts` | number | Retry counter, capped at 5 |
+| `last_error` | string **nullable** | Last failure reason |
+| `created_at` | number **indexed** | |
+| `sent_at` | number **nullable** | |
+
+**In practice this table stays empty.** `sendWelcomeEmail()`, `sendMilestoneEmail()` and `sendStreakEmail()` are exported but **no code calls them** — `App.tsx` starts only the drainer, against a queue nothing fills. The pipeline is complete and dormant; wiring the triggers is what would switch the feature on, and doing so means updating the Privacy Policy (§2D) in the same change.
+
+**Migrations:** v1→v2 added `part_of_speech` + `word_forms`; v2→v3 added `word_origin`; v3→v4 created `email_queue`. Because v3→v4 is a `createTable` step, a v3 database (such as the committed seed snapshot) migrates forward on open rather than being rejected. `src/db/models/Word.ts` applies WatermelonDB's legacy decorators **manually** — Babel's decorator transform conflicts with `babel-preset-expo` on SDK 57.
 
 ### Key–value store (`local_storage`)
 
@@ -87,6 +117,9 @@ No extra tables; all preferences and progression live here as JSON.
 | `settings.gameSounds` | Arcade SFX toggle |
 | `settings.themeMode` | `light`/`dark`/`system` (migrates legacy `settings.darkMode` boolean) |
 | `settings.onboardingComplete` | First-launch carousel gate |
+| `settings.consentAccepted` | Terms + Privacy acceptance; gates the entire app ahead of onboarding |
+| `settings.notifyEmail` | Notification address (stored on-device only) |
+| `settings.notifyEnabled` | Email-notification opt-in |
 | `games.millionaire.bestScore`, `games.memory.bestMoves`, `games.stat.<key>` | Best scores |
 | `games.celebratedUnlocks` | Which game unlocks have been celebrated |
 | `streak.state` | Freeze inventory, protected days, open repair, celebrated milestones |
@@ -124,13 +157,19 @@ Both surfaces read the streak engine, so the 2am grace boundary can't make them 
 
 *Design note:* day completion is always **derived** from `created_at`, so the streak can never drift from the collection; only non-derivable state (freezes, protected days, repair, milestones) is persisted. This is why no schema migration was needed for it.
 
+**Consent gate** (`src/screens/ConsentScreen.tsx`) — first launch renders a non-bypassable Terms + Privacy acceptance screen, ahead of both onboarding and the tab navigator, so neither is reachable until `settings.consentAccepted` is set. `App.tsx` holds a themed blank while the consent and onboarding flags resolve, so a returning user never sees either flash before it is dismissed.
+
+**Accounts** (`src/lib/auth.ts`, `src/screens/auth/SignInScreen.tsx`) — sign-in is **optional**; every feature works signed out. Methods: email + password, one-time code by email, OAuth via Google / GitHub / Microsoft-Azure (system browser, returning through the `vocabhub://` scheme), and native Apple Sign-In. Sessions live in `expo-secure-store` (OS keystore/Keychain), not the app database. Settings → *Account* shows the signed-in address with sign-out, or opens the sign-in sheet. **Signing in syncs nothing** — it establishes an identity, and the vocabulary collection stays on-device regardless.
+
+**Email notifications** — Settings → *Notifications* stores an address and an opt-in toggle. The delivery pipeline is built end to end (local outbox → `supabase/functions/send-email` → Hostinger SMTP, with SMTP credentials only ever server-side) but **is not wired to any trigger**, so the current build sends nothing; see the `email_queue` note in §3. Switching it on is a matter of calling the existing `send*Email()` helpers — and updating Privacy Policy §2D at the same time.
+
 **Onboarding & discovery** — 3-slide first-launch carousel; contextual "How it works" bottom sheets on Travel Mode, the Quiz hub and all five games; inviting empty states on Dashboard and Travel Mode; milestone unlock celebrations for games.
 
 **Legal & Privacy** (`src/screens/legal/`) — Settings → *About & Legal* lists Terms of Service and Privacy Policy as tappable rows; either opens a full-screen viewer with a segmented Terms/Privacy toggle, themed markdown rendering (headings, lists, blockquotes, inline code, rules) and links opened through `Linking.openURL()`. Document text lives in `policies.ts` and **mirrors `docs/legal/TERMS_OF_SERVICE.md` / `PRIVACY_POLICY.md`** — Metro cannot bundle `.md` as source, so both copies must be edited together; the `.md` files stay in the repo because the Privacy Policy itself promises updates are documented there.
 
-**Settings layout** (`src/screens/SettingsScreen.tsx`) — grouped under five uppercase section labels (Appearance · Practice · Audio · Your data · About) rather than a flat card list. Two sections collapse via `LayoutAnimation` with a rotating chevron: *Travel mode fields* opens by default so its six toggles stay readable, *About & legal* starts closed as read-once reference material. Every preference row is a full-width `Pressable` carrying `accessibilityRole="switch"` and its checked state — the `Switch` inside is inert (`pointerEvents="none"`) so assistive tech hears one control, not two. The theme picker is a `radiogroup` of `radio` options that spring into their selected state; the goal stepper labels its buttons and announces the value via a polite live region. No `setLayoutAnimationEnabledExperimental` call — it is a no-op that only warns under the New Architecture.
+**Settings layout** (`src/screens/SettingsScreen.tsx`) — grouped under seven uppercase section labels (Account · Appearance · Practice · Audio · Notifications · Your data · About) rather than a flat card list. Two sections collapse via `LayoutAnimation` with a rotating chevron: *Travel mode fields* opens by default so its six toggles stay readable, *About & legal* starts closed as read-once reference material. Every preference row is a full-width `Pressable` carrying `accessibilityRole="switch"` and its checked state — the `Switch` inside is inert (`pointerEvents="none"`) so assistive tech hears one control, not two. The theme picker is a `radiogroup` of `radio` options that spring into their selected state; the goal stepper labels its buttons and announces the value via a polite live region. No `setLayoutAnimationEnabledExperimental` call — it is a no-op that only warns under the New Architecture.
 
-**Theming & UX** — 3-way theme (`light`/`dark`/`system`) with a pastel palette (light: warm cream `#FAF7F1`; dark: charcoal-slate `#14161D`). Custom `AppDialogs` layer (`confirm()` / `toast()`) fully replaces `Alert.alert`. SFX and haptics on interactive controls, toggleable in Settings.
+**Theming & UX** — 3-way theme (`light`/`dark`/`system`) with a pastel palette (light: warm cream `#FAF7F1`; dark: charcoal-slate `#14161D`). Custom `AppDialogs` layer (`confirm()` / `toast()`) fully replaces `Alert.alert`; toasts render inside their own native `Modal` layer so they appear above screen-level modals such as the sign-in sheet rather than behind them. SFX and haptics on interactive controls, toggleable in Settings.
 
 ---
 
@@ -138,8 +177,21 @@ Both surfaces read the streak engine, so the 2am grace boundary can't make them 
 
 - **Package/bundle ID** `com.anonymous.AptitudeWords` and `app.json` slug `AptitudeWords` are intentionally *not* renamed despite the "Vocab Hub" rebrand — changing them would break native project identity.
 - Release APK ≈ 92 MB, **self-signed with the debug keystore** — fine for ad-hoc sharing, **not Play Store ready** (that needs a real release keystore).
-- Recipients must enable "install unknown apps". Installing over an existing copy preserves data, so onboarding won't re-appear for them.
+- Recipients must enable "install unknown apps". Installing over an existing copy preserves data, so consent and onboarding won't re-appear for them.
+- **A `.env` is required.** Without `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` the Supabase client has nothing to point at, so sign-in cannot work — build and distribute with those set, or ship knowing the Account section is non-functional.
+- The auth work added native modules and two `app.json` plugins, so any build predating it **must be rebuilt** (`npx expo prebuild --platform android` then Gradle) — a JS-only reload is not enough.
+- Installing a debug build over a release build keeps app data and makes the package debuggable, which is what `run-as` (and therefore `scripts/seed-device.sh`) needs.
 
 ## 6. Testing posture
 
 No Jest or CI. Verification is manual on-device walkthrough plus direct SQLite inspection, and `adb logcat` grepped for `AudioFlinger`/`MediaSession` transitions to confirm real audio playback. The streak engine (`src/lib/streakEngine.ts`) has scenario coverage (grace period, freeze earn/spend, repair completion/expiry, idempotency, milestones, calendar classification) exercised ad hoc via a compiled script — there is no committed Jest suite in the repo yet.
+
+### Seeding a test device
+
+`./scripts/seed-device.sh` restores `test-data/vocab-hub-seed.db` (232 words, all five arcade games unlocked, onboarding already dismissed) straight into the app sandbox, replacing the CSV import walkthrough. Because day completion is derived from `created_at`, the script shifts every timestamp forward so the newest word lands at "now" — the restored collection reads as added today rather than as a stale snapshot; pass `--keep-timestamps` to preserve the captured dates instead.
+
+The snapshot only restores onto a **debug** build: pushing into `/data/data/<pkg>/` requires `run-as`, which the OS refuses for a non-debuggable (release) package. Note the database lives at the app-data root (`watermelon.db`), not under `databases/`, and its `-wal`/`-shm` siblings must be removed when replacing it or the old WAL replays over the restored file.
+
+The snapshot is stamped `PRAGMA user_version = 3`; since v3→v4 is a `createTable` step, WatermelonDB migrates it forward on open and the seed stays usable without regeneration. That path has not yet been exercised on a device built from the merged tree — verify it there before relying on it, or re-run `build-seed-db.mjs` with `SCHEMA_VERSION` bumped to 4. The snapshot also predates the consent gate, so a restore leaves `settings.consentAccepted` unset and the consent screen appears once on next launch.
+
+`node scripts/build-seed-db.mjs` regenerates the snapshot from `test-data/vocab-hub-seed-data.csv` — needed when the CSV changes or a schema migration bumps `PRAGMA user_version` past the snapshot's version (v3). Its output has been verified byte-identical to a database the app itself wrote, across every column of all 232 rows.

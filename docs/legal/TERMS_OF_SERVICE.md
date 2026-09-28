@@ -19,10 +19,10 @@ If you do not agree with all provisions of these Terms or the incorporated polic
 ---
 
 ## 2. Description of Service
-Vocab Hub provides users with an offline-first personal vocabulary builder, text-to-speech commute audio playback ("Travel Mode"), spaced repetition quizzes, and gamified word challenges. 
+Vocab Hub provides users with an offline-first personal vocabulary builder, text-to-speech commute audio playback ("Travel Mode"), timed practice quizzes (all-time, 7-day, and 30-day windows), and gamified word challenges. 
 
 - **Offline-First Storage:** All personal vocabulary entries, quiz scores, game progress, and application preferences are stored locally on your device via an embedded database (WatermelonDB/SQLite).
-- **No Cloud Account:** Vocab Hub operates without requiring account registration, cloud syncing, or server-side user profiles.
+- **Optional Account:** Vocab Hub can be used in full without registering. Signing in is optional and enables account-based features such as lifecycle email notifications; your vocabulary entries, quiz scores, and streak history stay on your device either way and are never synced to our servers.
 - **Third-Party API Integration:** The Application uses `api.dictionaryapi.dev` (Free Dictionary API), `api.datamuse.com`, and Wiktionary API solely to auto-populate dictionary entries (pronunciations, definitions, synonyms, and origins) upon explicit user request.
 
 ---
